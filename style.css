@@ -1,0 +1,692 @@
+/* =====================================================================
+   style.css: visual do painel de senhas divergentes
+
+   ÍNDICE
+   1. Cores e tema ........ variáveis (mude as cores aqui)
+   2. Base ................ página, textos e títulos
+   3. Cabeçalho e abas .... faixa do topo, botões principais, abas
+   4. Controles ........... botões, campos e listas
+   5. Layout .............. avisos, indicadores, grades e painéis
+   6. Rankings ............ barras, etiquetas de categoria
+   7. Tabela .............. aba Base detalhada (caixa, categoria, abertas)
+   8. Aba Como usar ....... textos de ajuda
+   9. Utilitários ......... classes de apoio
+   10. Celular ............ ajustes para telas pequenas
+   ===================================================================== */
+
+
+/* ---------------------------------------------------------------------
+   1. CORES E TEMA
+   --bg    fundo da página        --card  fundo dos painéis
+   --tx    texto principal        --mu    texto secundário
+   --bd    bordas                 --soft  fundos suaves (trilhas, etiquetas)
+   --pri   cor principal (abas, botão principal, destaques)
+   --com   cor das divergências comerciais
+   --tri   cor das divergências tributárias
+   --ok    cor dos indicadores positivos (tempo médio)
+   --ab    fundo das linhas com chamado em aberto
+   --abx   destaque das linhas em aberto (faixa lateral e selo)
+   --topo1 / --topo2  degradê do cabeçalho
+   --------------------------------------------------------------------- */
+:root {
+  --bg:    #f4f6fb;
+  --card:  #ffffff;
+  --tx:    #0f172a;
+  --mu:    #64748b;
+  --bd:    #e2e8f0;
+  --soft:  #f1f5f9;
+  --pri:   #4f46e5;
+  --com:   #0891b2;
+  --tri:   #d97706;
+  --ok:    #059669;
+  --ab:    #fef2f2;
+  --abx:   #dc2626;
+  --topo1: #1e1b4b;
+  --topo2: #4338ca;
+  --sombra: 0 1px 2px rgba(15, 23, 42, .04), 0 6px 20px rgba(15, 23, 42, .05);
+
+  /* Respeita as barras do celular (entalhe e barra inferior) */
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Tema escuro automático, seguindo o sistema do usuário */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:    #0b1120;
+    --card:  #121a2b;
+    --tx:    #e2e8f0;
+    --mu:    #94a3b8;
+    --bd:    #223049;
+    --soft:  #1a2437;
+    --pri:   #818cf8;
+    --com:   #22d3ee;
+    --tri:   #fbbf24;
+    --ok:    #34d399;
+    --ab:    #3a1519;
+    --abx:   #f87171;
+    --topo1: #151338;
+    --topo2: #3730a3;
+    --sombra: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
+  }
+}
+
+/* Tema escuro forçado (use data-theme="dark" na tag html) */
+:root[data-theme="dark"] {
+  --bg:    #0b1120;
+  --card:  #121a2b;
+  --tx:    #e2e8f0;
+  --mu:    #94a3b8;
+  --bd:    #223049;
+  --soft:  #1a2437;
+  --pri:   #818cf8;
+  --com:   #22d3ee;
+  --tri:   #fbbf24;
+  --ok:    #34d399;
+  --ab:    #3a1519;
+  --abx:   #f87171;
+  --topo1: #151338;
+  --topo2: #3730a3;
+  --sombra: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
+}
+
+
+/* ---------------------------------------------------------------------
+   2. BASE
+   --------------------------------------------------------------------- */
+html {
+  scroll-padding-top: env(safe-area-inset-top, 0px);
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--tx);
+  font: 15px/1.55 "Inter", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 16px 56px;
+}
+
+h1 {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  margin: 0 0 4px;
+}
+
+h2 {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  margin: 0 0 14px;
+}
+
+h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 22px 0 6px;
+}
+
+.sub {
+  color: var(--mu);
+  margin: 0;
+}
+
+
+/* ---------------------------------------------------------------------
+   3. CABEÇALHO E ABAS
+   --------------------------------------------------------------------- */
+
+/* Faixa do topo com degradê */
+.topo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 24px 28px;
+  margin-bottom: 18px;
+  border-radius: 18px;
+  color: #fff;
+  background:
+    radial-gradient(circle at 85% 10%, rgba(255, 255, 255, .14), transparent 45%),
+    linear-gradient(135deg, var(--topo1), var(--topo2));
+  box-shadow: var(--sombra);
+}
+
+.topo .sub {
+  color: rgba(255, 255, 255, .75);
+  max-width: 60ch;
+}
+
+.acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Botão principal (Carregar planilha) */
+.topo .primario {
+  background: #fff;
+  color: #1e1b4b;
+  border-color: #fff;
+  font-weight: 600;
+}
+
+.topo .primario:hover {
+  background: #eef2ff;
+}
+
+/* Botão secundário (dados de exemplo), translúcido sobre o degradê */
+.topo .secundario {
+  background: rgba(255, 255, 255, .1);
+  color: #fff;
+  border-color: rgba(255, 255, 255, .3);
+}
+
+.topo .secundario:hover {
+  background: rgba(255, 255, 255, .2);
+}
+
+/* Abas em formato de "pílula" */
+.abas {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 16px;
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  box-shadow: var(--sombra);
+}
+
+.abas .tab {
+  border: 0;
+  background: transparent;
+  color: var(--mu);
+  font-weight: 500;
+  padding: 7px 16px;
+  white-space: nowrap;
+}
+
+.abas .tab:hover {
+  background: var(--soft);
+  color: var(--tx);
+}
+
+/* Aba selecionada (Painel, Base detalhada, Notas fiscais, Como usar) */
+.abas .tab.on {
+  background: var(--pri);
+  color: #fff;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--pri) 40%, transparent);
+}
+
+
+/* ---------------------------------------------------------------------
+   4. CONTROLES
+   --------------------------------------------------------------------- */
+button,
+select,
+input {
+  font: inherit;
+  color: var(--tx);
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+  padding: 8px 14px;
+  transition: background-color .15s, border-color .15s, box-shadow .15s, color .15s;
+}
+
+button {
+  cursor: pointer;
+  font-weight: 500;
+}
+
+button:hover {
+  background: var(--soft);
+}
+
+select {
+  cursor: pointer;
+}
+
+input[type="search"],
+input[type="text"] {
+  background: var(--soft);
+}
+
+input[type="search"]:focus,
+input[type="text"]:focus {
+  background: var(--card);
+}
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: none;
+  border-color: var(--pri);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pri) 25%, transparent);
+}
+
+/* Linha de controles: filtros, busca e botões dentro dos painéis */
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+
+/* ---------------------------------------------------------------------
+   5. LAYOUT
+   --------------------------------------------------------------------- */
+
+/* Faixa de aviso com a origem dos dados */
+.aviso {
+  background: color-mix(in srgb, var(--pri) 8%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--pri) 20%, var(--bd));
+  border-left: 4px solid var(--pri);
+  color: var(--tx);
+  font-size: 13px;
+  border-radius: 10px;
+  padding: 9px 14px;
+  margin-bottom: 16px;
+}
+
+.aviso:empty {
+  display: none; /* some quando não há mensagem */
+}
+
+/* Indicadores do topo (total, comerciais, tributárias...) */
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.kpi {
+  position: relative;
+  overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: 14px;
+  padding: 16px 18px 14px;
+  box-shadow: var(--sombra);
+  --cor: var(--pri);
+}
+
+/* Faixa colorida no topo de cada indicador, na ordem em que aparecem */
+.kpi::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  background: var(--cor);
+}
+
+.kpi:nth-child(2) { --cor: var(--com); }
+.kpi:nth-child(3) { --cor: var(--tri); }
+.kpi:nth-child(4) { --cor: var(--abx); }
+.kpi:nth-child(5) { --cor: var(--ok); }
+
+.kpi b {
+  display: block;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  color: var(--tx);
+}
+
+.kpi span {
+  color: var(--mu);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+/* Cartão que agrupa cada bloco de conteúdo */
+.painel {
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: 16px;
+  padding: 18px 20px;
+  margin-bottom: 16px;
+  box-shadow: var(--sombra);
+}
+
+/* Grade de painéis lado a lado (quebra em coluna no celular) */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.grid .painel {
+  margin-bottom: 0; /* o espaço entre painéis vem do gap da grade */
+}
+
+
+/* ---------------------------------------------------------------------
+   6. RANKINGS (barras)
+   Estrutura de cada linha:
+   .row > .top (nome + valor) + .tr (trilha) > .fl (preenchimento)
+   --------------------------------------------------------------------- */
+.row {
+  margin-bottom: 14px;
+}
+
+.row:last-child {
+  margin-bottom: 0;
+}
+
+.top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.top span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.top b {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* Trilha (fundo da barra) */
+.tr {
+  height: 10px;
+  background: var(--soft);
+  border-radius: 999px;
+  margin-top: 5px;
+  overflow: hidden;
+}
+
+/* Preenchimento da barra: comercial por padrão */
+.fl {
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--com) 70%, transparent), var(--com));
+}
+
+.fl.tri {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tri) 70%, transparent), var(--tri));
+}
+
+.fl.nd {
+  background: var(--mu); /* tipo não informado (divergência vazia) */
+}
+
+.fl.mix {
+  background: var(--tx);
+}
+
+/* Etiquetas de categorias abaixo de cada fornecedor */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.chip {
+  background: var(--soft);
+  border: 1px solid var(--bd);
+  color: var(--mu);
+  font-size: 11.5px;
+  border-radius: 999px;
+  padding: 1px 9px;
+}
+
+
+/* ---------------------------------------------------------------------
+   7. TABELA (aba Base detalhada)
+   --------------------------------------------------------------------- */
+.tab-wrap {
+  overflow: auto;          /* rolagem lateral no celular */
+  max-height: 72vh;        /* cabeçalho fica fixo enquanto rola a tabela */
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+}
+
+table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--bd);
+  vertical-align: middle;
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--soft);
+  color: var(--mu);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  white-space: nowrap;
+}
+
+/* Realce ao passar o mouse (linhas já resolvidas) */
+tbody tr:not(.aberta):hover td {
+  background: color-mix(in srgb, var(--pri) 5%, var(--card));
+}
+
+/* Caixa "Resolvido": maior que o padrão para facilitar o clique.
+   Para mudar o tamanho, altere width e height (mantenha os dois iguais). */
+td input[type="checkbox"] {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  margin: 0;
+  vertical-align: middle;
+  accent-color: var(--pri);
+  cursor: pointer;
+}
+
+td input[type="checkbox"]:disabled {
+  cursor: not-allowed; /* resolução já veio da planilha */
+}
+
+/* Seletor de categoria na coluna Categoria: compacto para caber na tabela.
+   O nome completo aparece ao passar o mouse e ao abrir a lista. */
+.sel-cat {
+  font-size: 13px;
+  font-weight: 400;
+  padding: 5px 8px;
+  width: 230px;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  border-radius: 8px;
+}
+
+/* Seletor de tipo (só aparece quando a planilha não diz o tipo).
+   Tem a forma da etiqueta de tipo e muda de cor conforme a escolha. */
+.sel-tipo {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+
+.sel-tipo.nd {
+  color: var(--mu);
+  border-style: dashed;
+}
+
+.sel-tipo.com {
+  color: var(--com);
+  background: color-mix(in srgb, var(--com) 12%, var(--card));
+  border-color: color-mix(in srgb, var(--com) 40%, var(--bd));
+}
+
+.sel-tipo.tri {
+  color: var(--tri);
+  background: color-mix(in srgb, var(--tri) 14%, var(--card));
+  border-color: color-mix(in srgb, var(--tri) 40%, var(--bd));
+}
+
+.sel-tipo option {
+  color: var(--tx);
+  background: var(--card);
+}
+
+/* Linha com chamado em aberto (sem resolução): fundo colorido, negrito
+   e faixa vermelha à esquerda, para achar rápido as senhas pendentes.
+   Para mudar as cores, altere --ab e --abx na seção 1. */
+tr.aberta td {
+  background: var(--ab);
+  font-weight: 600;
+}
+
+tr.aberta td:first-child {
+  box-shadow: inset 4px 0 0 var(--abx);
+}
+
+/* Selo "Aberta" na coluna Resolução */
+.selo-aberta {
+  display: inline-block;
+  background: var(--abx);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .03em;
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+
+:root[data-theme="dark"] .selo-aberta { color: #1a0a0a; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .selo-aberta { color: #1a0a0a; }
+}
+
+/* Tipo da divergência na tabela, em forma de etiqueta */
+.tag {
+  display: inline-block;
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+
+.tag.com {
+  color: var(--com);
+  background: color-mix(in srgb, var(--com) 12%, transparent);
+}
+
+.tag.tri {
+  color: var(--tri);
+  background: color-mix(in srgb, var(--tri) 14%, transparent);
+}
+
+.tag.nd {
+  color: var(--mu);
+  background: var(--soft);
+  border: 1px dashed var(--bd);
+}
+
+
+/* ---------------------------------------------------------------------
+   8. ABA COMO USAR
+   --------------------------------------------------------------------- */
+.ajuda p,
+.ajuda li {
+  max-width: 75ch; /* linhas curtas ficam mais fáceis de ler */
+}
+
+.ajuda li {
+  margin-bottom: 4px;
+}
+
+.ajuda h3 {
+  padding-top: 14px;
+  border-top: 1px solid var(--bd);
+}
+
+code {
+  background: var(--soft);
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-size: 12.5px;
+}
+
+
+/* ---------------------------------------------------------------------
+   9. UTILITÁRIOS
+   --------------------------------------------------------------------- */
+.vazio {
+  color: var(--mu); /* texto de apoio e mensagens de lista vazia */
+}
+
+.hidden {
+  display: none; /* usado para trocar de aba */
+}
+
+
+/* ---------------------------------------------------------------------
+   10. CELULAR
+   --------------------------------------------------------------------- */
+@media (max-width: 600px) {
+  main {
+    padding-top: 12px;
+  }
+
+  .topo {
+    padding: 18px;
+    border-radius: 14px;
+  }
+
+  h1 {
+    font-size: 20px;
+  }
+
+  .abas {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto; /* abas deslizam para o lado se não couberem */
+  }
+
+  .abas .tab {
+    flex: 1 0 auto;
+    padding: 7px 12px;
+  }
+
+  .kpi b {
+    font-size: 24px;
+  }
+}
