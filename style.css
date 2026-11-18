@@ -331,6 +331,31 @@ input:focus-visible {
   color: var(--pri);
 }
 
+/* Botão ✕ que esconde a faixa e versão recolhida (só o botão "Banco conectado") */
+.banco .fechar {
+  padding: 4px 8px;
+  color: var(--mu);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.banco .fechar:hover {
+  color: var(--tx);
+}
+
+.banco.mini {
+  display: inline-flex;
+  padding: 2px 4px;
+  box-shadow: none;
+}
+
+.banco.mini button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--mu);
+}
+
 .banco .erro {
   flex-basis: 100%;
   color: var(--abx);
