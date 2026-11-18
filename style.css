@@ -286,6 +286,93 @@ input:focus-visible {
 }
 
 
+/* Faixa do banco de dados (histórico): estado, botões e escolha do que mostrar */
+.banco {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  box-shadow: var(--sombra);
+}
+
+.banco:empty {
+  display: none;
+}
+
+.banco > span:nth-of-type(2) {
+  flex: 1;
+  min-width: 220px;
+}
+
+.banco button {
+  font-size: 13px;
+  padding: 6px 12px;
+}
+
+.banco .primario {
+  background: var(--pri);
+  border-color: var(--pri);
+  color: #fff;
+}
+
+.banco .primario:hover {
+  background: color-mix(in srgb, var(--pri) 85%, #000);
+}
+
+.banco .link {
+  border-color: transparent;
+  background: transparent;
+  color: var(--pri);
+}
+
+.banco .erro {
+  flex-basis: 100%;
+  color: var(--abx);
+}
+
+/* Bolinha de estado: verde conectado, cinza desconectado */
+.ponto {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--mu);
+}
+
+.ponto.on {
+  background: var(--ok);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 20%, transparent);
+}
+
+/* Escolha "Base carregada" / "Histórico completo" */
+.visao {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  background: var(--soft);
+  border-radius: 10px;
+}
+
+.visao button {
+  border: 0;
+  background: transparent;
+  color: var(--mu);
+  padding: 5px 10px;
+}
+
+.visao button.on {
+  background: var(--card);
+  color: var(--tx);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .12);
+}
+
+
 /* ---------------------------------------------------------------------
    5. LAYOUT
    --------------------------------------------------------------------- */
@@ -409,6 +496,40 @@ input:focus-visible {
 .top b {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+}
+
+/* Lado direito da linha do TOP fornecedores: total por tipo + total geral */
+.top .dir {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex: none;
+  overflow: visible;
+}
+
+.por-tipo {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+  overflow: visible;
+}
+
+.por-tipo i {
+  font-style: normal;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  border-radius: 999px;
+  padding: 0 7px;
+}
+
+.por-tipo .com { color: var(--com); background: color-mix(in srgb, var(--com) 12%, transparent); }
+.por-tipo .tri { color: var(--tri); background: color-mix(in srgb, var(--tri) 14%, transparent); }
+.por-tipo .nd  { color: var(--mu);  background: var(--soft); }
+
+/* Linha de legenda acima do TOP fornecedores */
+.legenda {
+  margin: 0 0 12px;
+  font-size: 13px;
 }
 
 /* Trilha (fundo da barra) */
