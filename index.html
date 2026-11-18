@@ -32,6 +32,9 @@
   <button class="tab" data-aba="notas">Notas fiscais</button>
   <button class="tab" data-aba="ajuda">Como usar</button>
 </nav>
+
+<!-- Banco de dados: histórico de senhas (preenchido pelo script.js) -->
+<div class="banco" id="banco" aria-live="polite"></div>
 <div class="aviso" id="aviso"></div>
 
 <!-- ===== ABA 1: PAINEL ===== -->
@@ -95,11 +98,26 @@
           <li>Caixa cinza, que não deixa clicar: a data de resolução já veio da planilha (coluna <code>FIM DIV COM</code> ou <code>FIM DIV TRIB</code>) e só pode ser mudada lá.</li>
           <li>Quando a planilha não diz se a divergência é comercial ou tributária, a coluna <b>Tipo</b> mostra a lista <b>Escolha o tipo…</b>. Escolha <b>Comercial</b> ou <b>Tributária</b>: a lista muda de cor, a escolha é salva na hora e o Painel é atualizado. Para voltar atrás, escolha <b>Escolha o tipo…</b> de novo. Se depois a planilha trouxer o tipo (no texto da divergência ou nas colunas INI/FIM DIV), vale o da planilha.</li>
           <li>Tipo com asterisco (<b>Comercial*</b> ou <b>Tributária*</b>): a DIVERGÊNCIA DOS PEDIDOS veio vazia e o tipo foi definido pelas colunas <code>INI/FIM DIV</code>. Passe o mouse na etiqueta para ver de onde veio o tipo.</li>
-          <li>A marcação de <b>Resolvido</b>, o <b>Tipo</b> e a <b>Categoria</b> escolhidos ficam salvos só neste navegador, neste computador. Outra pessoa, ou outro navegador, não vê o que você marcou. Ao carregar a base do dia seguinte, o que foi marcado volta para as NFs com a mesma senha e o mesmo número de NF.</li>
+          <li>A marcação de <b>Resolvido</b>, o <b>Tipo</b> e a <b>Categoria</b> escolhidos ficam salvos neste navegador e, com o banco conectado, também no banco, onde todo o time vê. Sem banco, outra pessoa ou outro navegador não vê o que você marcou. Ao carregar a base do dia seguinte, o que foi marcado volta para as NFs com a mesma senha e o mesmo número de NF.</li>
         </ul>
       </li>
       <li>Os dados ficam só no seu navegador. Nada é enviado para fora.</li>
     </ol>
+    <h3>Banco de dados (histórico)</h3>
+    <p>O banco guarda todas as senhas divergentes de todas as bases carregadas. Assim, o <b>Top fornecedores</b> mostra o total acumulado de cada fornecedor, separado em comercial e tributário. O banco é um arquivo <code>historico-senhas.json</code> numa pasta do OneDrive ou SharePoint que todo o time acessa. Funciona no <b>Edge</b> ou no <b>Chrome</b>.</p>
+    <ol>
+      <li><b>Primeira vez (uma pessoa só):</b> clique em <b>Criar banco</b>, escolha a pasta compartilhada do OneDrive e salve. Depois carregue as bases que já tiver, uma por vez: cada uma entra no histórico.</li>
+      <li><b>Demais pessoas:</b> clique em <b>Abrir banco existente</b> e escolha o mesmo <code>historico-senhas.json</code> na pasta sincronizada do OneDrive.</li>
+      <li><b>Todo dia:</b> ao abrir o painel, clique em <b>Reconectar</b> e aceite a permissão do navegador (ele pede uma vez por sessão). Depois clique em <b>Carregar planilha</b> com a base do dia. As senhas novas entram, as que já estavam são atualizadas e nada é contado duas vezes (a chave é senha + NF).</li>
+    </ol>
+    <ul>
+      <li>A faixa do banco mostra quantas senhas estão no histórico e quantas estão em aberto. Use <b>Base carregada</b> ou <b>Histórico completo</b> para escolher o que o Painel e a Base detalhada mostram.</li>
+      <li>No Top fornecedores, cada linha mostra o total e, ao lado, quantas são <b>com.</b> (comerciais) e <b>trib.</b> (tributárias). A frase acima da lista diz se os números são do histórico ou só da base carregada e qual o período.</li>
+      <li>O que você escolhe na tela (Tipo, Categoria e Resolvido) também vai para o banco, e o resto do time vê. O painel confere o arquivo a cada minuto e traz o que os colegas gravaram.</li>
+      <li>Uma senha que estava divergente e na base seguinte aparece como FINALIZADO com <code>FIM DIV</code> preenchido é marcada como resolvida no histórico automaticamente.</li>
+      <li>Os dados de exemplo nunca entram no banco.</li>
+      <li>Não apague nem edite o <code>historico-senhas.json</code> à mão. Para começar do zero, crie um banco novo com outro nome.</li>
+    </ul>
     <h3>Colunas da planilha</h3>
     <p>O painel acha o cabeçalho sozinho, mesmo que a exportação tenha linhas de título antes. As outras colunas da planilha são ignoradas.</p>
     <ul>
@@ -128,7 +146,7 @@
     <h3>Como alterar o painel</h3>
     <p>Todo ajuste simples está no bloco <code>CONFIG</code>, no início do arquivo <code>script.js</code>, com comentários. Exemplos: mudar o top 10 para top 5 (<code>TOP_N</code>), usar a mediana em vez da média (<code>METRICA_TEMPO</code>), aceitar outros nomes de coluna (<code>COLUNAS</code>) ou fixar os dados dentro da página (<code>CSV_INICIAL</code>). A lista de categorias do seletor fica em <code>CATEGORIAS</code>: para incluir, tirar ou corrigir uma categoria, edite ali. As cores ficam no início do arquivo <code>style.css</code>. O tamanho da caixa <b>Resolvido</b> fica na seção 6 (Tabela) do <code>style.css</code>, em <code>width</code> e <code>height</code>. As cores do destaque das senhas em aberto ficam em <code>--ab</code> (fundo) e <code>--abx</code> (faixa e selo), no início do <code>style.css</code>.</p>
     <h3>Compartilhar com o time</h3>
-    <p>Envie a pasta com os três arquivos (<code>index.html</code>, <code>style.css</code> e <code>script.js</code>) ou publique-a em um servidor interno. Cada pessoa carrega a planilha mais recente. Para todos verem sempre os mesmos dados, cole o conteúdo do CSV em <code>CSV_INICIAL</code>.</p>
+    <p>Envie a pasta com os três arquivos (<code>index.html</code>, <code>style.css</code> e <code>script.js</code>) ou publique-a em um servidor interno. Para todos verem os mesmos números, usem o mesmo banco de dados (<code>historico-senhas.json</code>) numa pasta compartilhada do OneDrive. Basta uma pessoa carregar a base do dia para o total de todos ser atualizado.</p>
   </div>
 </section>
 </main>
