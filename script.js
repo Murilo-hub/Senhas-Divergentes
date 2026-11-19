@@ -477,7 +477,7 @@ function desenharNotas(){
    Cada base carregada é juntada ao histórico, sem repetir a mesma senha e NF.
    As escolhas da tela (tipo, categoria, resolvido) também vão para o arquivo, então todos que usam o mesmo arquivo veem o mesmo.
    Funciona no Edge e no Chrome. O navegador pede permissão para mexer no arquivo uma vez por sessão. */
-const BANCO = { handle: null, ok: false, nome: '', lido: 0, atualizado: null, timer: null };
+const BANCO = { handle: null, ok: false, nome: '', lido: 0, atualizado: null, timer: null, erro: '' }; // erro: última falha, fica visível até dar certo
 const temSuporteBanco = () => 'showOpenFilePicker' in window;
 const CAMPOS_ARQUIVO = ['senha','nf','cd','status','fornecedor','categoriaArquivo','tipoArquivo','tipoPorColuna','agenda','inicio','resolucaoArquivo','descricao'];
 const CAMPOS_MANUAIS = ['tipoManual','categoriaManual','resolucaoManual','chamadoManual'];
@@ -549,12 +549,25 @@ async function conectarBanco(handle){ // passa a usar este arquivo como banco
   BANCO.handle = handle; BANCO.nome = handle.name;
   try{
     HIST.clear(); juntarDoArquivo(await lerArquivoBanco());
-    BANCO.ok = true; VISAO = 'hist'; await idbGravar('banco', handle);
+    BANCO.ok = true; BANCO.erro = ''; VISAO = 'hist'; await idbGravar('banco', handle);
     if(BASE_REAL){ juntarBase(DADOS, DADOS.outras); } // a base que já estava aberta entra no histórico
     await gravarBanco(); vigiarBanco(); redesenhar();
   } catch(e){ falhaBanco(e); }
 }
-function falhaBanco(e){ BANCO.ok = false; desenharBanco('Não foi possível usar o banco: ' + (e?.message || e) + '.'); redesenhar(); }
+function explicarErroBanco(e){ // traduz os erros do navegador para o que a pessoa pode fazer
+  const n = e?.name || '', m = String(e?.message || e || '');
+  if(/cross.origin|sub.?frame|iframe/i.test(m) || (n === 'SecurityError' && window.top !== window))
+    return 'O navegador bloqueou a janela de arquivos porque o painel está aberto dentro de outra página (visualização do OneDrive, SharePoint, Teams ou e-mail). Baixe a pasta do painel e abra o index.html direto no Edge ou no Chrome.';
+  if(/unsafe|system|too many calls/i.test(m))
+    return 'O navegador não deixa salvar nessa pasta, por ser uma pasta do sistema (ex.: a pasta do usuário, Área de Trabalho ou Documentos na raiz). Crie uma subpasta, por exemplo OneDrive > Senhas Divergentes, e salve o banco dentro dela.';
+  if(n === 'NotAllowedError') return 'O navegador não recebeu permissão para mexer no arquivo. Tente de novo e, quando ele perguntar, clique em Permitir ou Editar arquivos.';
+  if(n === 'NoModificationAllowedError' || n === 'InvalidStateError')
+    return 'O arquivo está bloqueado (pode estar sendo sincronizado pelo OneDrive ou aberto em outro programa). Espere alguns segundos e tente de novo.';
+  if(n === 'NotFoundError') return 'O arquivo do banco não foi encontrado (foi movido, renomeado ou apagado). Abra o arquivo de novo ou crie outro banco.';
+  if(n === 'SyntaxError' || /não é um banco/.test(m)) return 'O arquivo escolhido não é um banco deste painel. Escolha o historico-senhas.json certo ou crie um banco novo.';
+  return 'Não foi possível usar o banco: ' + m + (n ? ' (' + n + ')' : '') + '.';
+}
+function falhaBanco(e){ BANCO.ok = false; BANCO.erro = explicarErroBanco(e); console.error('Banco de dados:', e); redesenhar(); }
 function vigiarBanco(){ // a cada minuto, confere se alguém do time gravou algo novo no arquivo
   clearInterval(BANCO.timer);
   BANCO.timer = setInterval(async () => { if(!BANCO.ok) return;
@@ -562,15 +575,17 @@ function vigiarBanco(){ // a cada minuto, confere se alguém do time gravou algo
     catch(e){ falhaBanco(e); } }, 60000);
 }
 async function criarBanco(){
+  BANCO.erro = '';
   try{ conectarBanco(await window.showSaveFilePicker({ suggestedName: 'historico-senhas.json', types: [{ description: 'Banco do painel (JSON)', accept: { 'application/json': ['.json'] } }] })); }
   catch(e){ if(e.name !== 'AbortError') falhaBanco(e); }
 }
 async function abrirBanco(){
+  BANCO.erro = '';
   try{ const [h] = await window.showOpenFilePicker({ types: [{ description: 'Banco do painel (JSON)', accept: { 'application/json': ['.json'] } }] }); conectarBanco(h); }
   catch(e){ if(e.name !== 'AbortError') falhaBanco(e); }
 }
 async function reconectarBanco(){ // precisa de um clique: o navegador pergunta se pode mexer no arquivo
-  try{ if(await BANCO.handle.requestPermission({ mode: 'readwrite' }) === 'granted') conectarBanco(BANCO.handle); else desenharBanco('Permissão negada. O histórico não será salvo.'); }
+  try{ if(await BANCO.handle.requestPermission({ mode: 'readwrite' }) === 'granted') conectarBanco(BANCO.handle); else { BANCO.erro = 'Permissão negada. O histórico não será salvo.'; desenharBanco(); } }
   catch(e){ falhaBanco(e); }
 }
 async function iniciarBanco(){ // ao abrir a página: tenta voltar ao arquivo usado da última vez
@@ -580,7 +595,7 @@ async function iniciarBanco(){ // ao abrir a página: tenta voltar ao arquivo us
   try{ if(await h.queryPermission({ mode: 'readwrite' }) === 'granted') return conectarBanco(h); } catch(e){}
   desenharBanco(); // sem permissão ainda: mostra o botão Reconectar
 }
-function desenharBanco(msg){ // indicador pequeno no topo; clicar abre os detalhes e os botões
+function desenharBanco(msg = BANCO.erro){ // indicador pequeno no topo; clicar abre os detalhes e os botões
   const el = $('banco'), aberto = el.querySelector('details')?.open, btn = (id, t, cls = '') => `<button type="button" id="${id}" class="${cls}">${t}</button>`;
   let estado, rotulo, corpo;
   if(!temSuporteBanco()){ estado = 'off'; rotulo = 'Sem banco'; corpo = '<p><b>Banco de dados indisponível neste navegador.</b> Abra o painel no Edge ou no Chrome para guardar o histórico.</p>'; }
