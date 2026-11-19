@@ -4,14 +4,15 @@
    ÍNDICE
    1. Cores e tema ........ variáveis (mude as cores aqui)
    2. Base ................ página, textos e títulos
-   3. Cabeçalho e abas .... faixa do topo, botões principais, abas
+   3. Cabeçalho e abas .... faixa do topo, botão principal, abas
    4. Controles ........... botões, campos e listas
-   5. Layout .............. avisos, indicadores, grades e painéis
-   6. Rankings ............ barras, etiquetas de categoria
-   7. Tabela .............. aba Base detalhada (caixa, categoria, abertas)
-   8. Aba Como usar ....... textos de ajuda
-   9. Utilitários ......... classes de apoio
-   10. Celular ............ ajustes para telas pequenas
+   5. Banco e filtros ..... indicador do banco, filtros do topo
+   6. Layout .............. avisos, indicadores, grades e painéis
+   7. Rankings ............ barras, etiquetas de categoria
+   8. Tabela .............. aba Base detalhada (caixa, categoria, chamado, abertas)
+   9. Aba Como usar ....... textos de ajuda
+   10. Utilitários ........ classes de apoio
+   11. Celular ............ ajustes para telas pequenas
    ===================================================================== */
 
 
@@ -23,72 +24,76 @@
    --pri   cor principal (abas, botão principal, destaques)
    --com   cor das divergências comerciais
    --tri   cor das divergências tributárias
-   --ok    cor dos indicadores positivos (tempo médio)
+   --ok    cor dos indicadores positivos (tempo médio, banco conectado)
+   --chk   cor da caixa "Resolvido" marcada
    --ab    fundo das linhas com chamado em aberto
    --abx   destaque das linhas em aberto (faixa lateral e selo)
-   --topo1 / --topo2  degradê do cabeçalho
    --------------------------------------------------------------------- */
 :root {
-  --bg:    #f4f6fb;
+  --bg:    #f5f7fb;
   --card:  #ffffff;
-  --tx:    #0f172a;
-  --mu:    #64748b;
-  --bd:    #e2e8f0;
-  --soft:  #f1f5f9;
+  --tx:    #0b1324;
+  --mu:    #667085;
+  --bd:    #e6e9f0;
+  --soft:  #f2f4f8;
   --pri:   #4f46e5;
   --com:   #0891b2;
   --tri:   #d97706;
   --ok:    #059669;
-  --ab:    #fef2f2;
-  --abx:   #dc2626;
-  --topo1: #1e1b4b;
-  --topo2: #4338ca;
-  --sombra: 0 1px 2px rgba(15, 23, 42, .04), 0 6px 20px rgba(15, 23, 42, .05);
+  --chk:   #22c55e;
+  --ab:    #fff5f5;
+  --abx:   #e11d48;
+  --sombra:  0 1px 2px rgba(16, 24, 40, .04), 0 1px 3px rgba(16, 24, 40, .06);
+  --sombra2: 0 12px 32px -8px rgba(16, 24, 40, .18), 0 4px 8px -4px rgba(16, 24, 40, .08);
+  --raio: 14px;
 
   /* Respeita as barras do celular (entalhe e barra inferior) */
   box-sizing: border-box;
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: env(safe-area-inset-bottom, 0px);
+  color-scheme: light;
 }
 
 /* Tema escuro automático, seguindo o sistema do usuário */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg:    #0b1120;
-    --card:  #121a2b;
-    --tx:    #e2e8f0;
+    --bg:    #0a0f1c;
+    --card:  #111827;
+    --tx:    #e5e7eb;
     --mu:    #94a3b8;
-    --bd:    #223049;
-    --soft:  #1a2437;
+    --bd:    #1f2a3d;
+    --soft:  #172033;
     --pri:   #818cf8;
     --com:   #22d3ee;
     --tri:   #fbbf24;
     --ok:    #34d399;
-    --ab:    #3a1519;
-    --abx:   #f87171;
-    --topo1: #151338;
-    --topo2: #3730a3;
-    --sombra: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
+    --chk:   #22c55e;
+    --ab:    #2a1218;
+    --abx:   #fb7185;
+    --sombra:  0 1px 2px rgba(0, 0, 0, .3);
+    --sombra2: 0 12px 32px -8px rgba(0, 0, 0, .6);
+    color-scheme: dark;
   }
 }
 
 /* Tema escuro forçado (use data-theme="dark" na tag html) */
 :root[data-theme="dark"] {
-  --bg:    #0b1120;
-  --card:  #121a2b;
-  --tx:    #e2e8f0;
+  --bg:    #0a0f1c;
+  --card:  #111827;
+  --tx:    #e5e7eb;
   --mu:    #94a3b8;
-  --bd:    #223049;
-  --soft:  #1a2437;
+  --bd:    #1f2a3d;
+  --soft:  #172033;
   --pri:   #818cf8;
   --com:   #22d3ee;
   --tri:   #fbbf24;
   --ok:    #34d399;
-  --ab:    #3a1519;
-  --abx:   #f87171;
-  --topo1: #151338;
-  --topo2: #3730a3;
-  --sombra: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
+  --chk:   #22c55e;
+  --ab:    #2a1218;
+  --abx:   #fb7185;
+  --sombra:  0 1px 2px rgba(0, 0, 0, .3);
+  --sombra2: 0 12px 32px -8px rgba(0, 0, 0, .6);
+  color-scheme: dark;
 }
 
 
@@ -101,23 +106,27 @@ html {
 
 body {
   margin: 0;
-  background: var(--bg);
+  background:
+    radial-gradient(1200px 400px at 10% -10%, color-mix(in srgb, var(--pri) 9%, transparent), transparent 70%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--tx);
-  font: 15px/1.55 "Inter", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  font: 14.5px/1.55 "Inter", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
 main {
-  max-width: 1200px;
+  max-width: 1240px;
   margin: 0 auto;
-  padding: 24px 16px 56px;
+  padding: 20px 16px 56px;
 }
 
 h1 {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: -.02em;
-  margin: 0 0 4px;
+  margin: 0;
+  line-height: 1.25;
 }
 
 h2 {
@@ -135,7 +144,8 @@ h3 {
 
 .sub {
   color: var(--mu);
-  margin: 0;
+  margin: 2px 0 0;
+  font-size: 13px;
 }
 
 
@@ -143,89 +153,88 @@ h3 {
    3. CABEÇALHO E ABAS
    --------------------------------------------------------------------- */
 
-/* Faixa do topo com degradê */
+/* Linha do topo: marca à esquerda, banco e botão principal à direita */
 .topo {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 24px 28px;
+  gap: 14px;
   margin-bottom: 18px;
-  border-radius: 18px;
-  color: #fff;
-  background:
-    radial-gradient(circle at 85% 10%, rgba(255, 255, 255, .14), transparent 45%),
-    linear-gradient(135deg, var(--topo1), var(--topo2));
-  box-shadow: var(--sombra);
 }
 
-.topo .sub {
-  color: rgba(255, 255, 255, .75);
-  max-width: 60ch;
+.marca {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* Quadradinho com as iniciais */
+.logo {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: .02em;
+  background: linear-gradient(135deg, var(--pri), color-mix(in srgb, var(--pri) 55%, #06b6d4));
+  box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--pri) 70%, transparent);
 }
 
 .acoes {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
 }
 
-/* Botão principal (Carregar planilha) */
-.topo .primario {
-  background: #fff;
-  color: #1e1b4b;
-  border-color: #fff;
-  font-weight: 600;
-}
-
-.topo .primario:hover {
-  background: #eef2ff;
-}
-
-/* Botão secundário (dados de exemplo), translúcido sobre o degradê */
-.topo .secundario {
-  background: rgba(255, 255, 255, .1);
-  color: #fff;
-  border-color: rgba(255, 255, 255, .3);
-}
-
-.topo .secundario:hover {
-  background: rgba(255, 255, 255, .2);
-}
-
-/* Abas em formato de "pílula" */
+/* Abas sublinhadas */
 .abas {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 4px;
-  margin-bottom: 16px;
-  background: var(--card);
-  border: 1px solid var(--bd);
-  border-radius: 12px;
-  box-shadow: var(--sombra);
+  display: flex;
+  gap: 2px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--bd);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
 .abas .tab {
+  position: relative;
   border: 0;
+  border-radius: 8px 8px 0 0;
   background: transparent;
+  box-shadow: none;
   color: var(--mu);
   font-weight: 500;
-  padding: 7px 16px;
+  padding: 10px 14px;
   white-space: nowrap;
 }
 
 .abas .tab:hover {
-  background: var(--soft);
   color: var(--tx);
+  background: transparent;
 }
 
-/* Aba selecionada (Painel, Base detalhada, Notas fiscais, Como usar) */
+/* Aba selecionada: texto na cor principal e traço embaixo */
 .abas .tab.on {
+  color: var(--pri);
+  font-weight: 600;
+}
+
+.abas .tab.on::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
   background: var(--pri);
-  color: #fff;
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--pri) 40%, transparent);
 }
 
 
@@ -241,16 +250,21 @@ input {
   border: 1px solid var(--bd);
   border-radius: 10px;
   padding: 8px 14px;
-  transition: background-color .15s, border-color .15s, box-shadow .15s, color .15s;
+  transition: background-color .15s, border-color .15s, box-shadow .15s, color .15s, transform .1s;
 }
 
 button {
   cursor: pointer;
   font-weight: 500;
+  box-shadow: var(--sombra);
 }
 
 button:hover {
   background: var(--soft);
+}
+
+button:active {
+  transform: translateY(1px);
 }
 
 select {
@@ -258,21 +272,49 @@ select {
 }
 
 input[type="search"],
-input[type="text"] {
-  background: var(--soft);
-}
-
-input[type="search"]:focus,
-input[type="text"]:focus {
+input[type="text"],
+input[type="date"] {
   background: var(--card);
 }
 
 button:focus-visible,
 select:focus-visible,
-input:focus-visible {
+input:focus-visible,
+summary:focus-visible {
   outline: none;
   border-color: var(--pri);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--pri) 25%, transparent);
+}
+
+/* Botão principal (Carregar planilha, Adicionar regra, Reconectar...) */
+.primario {
+  background: var(--pri);
+  border-color: var(--pri);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 4px 12px -4px color-mix(in srgb, var(--pri) 70%, transparent);
+}
+
+.primario:hover {
+  background: color-mix(in srgb, var(--pri) 88%, #000);
+}
+
+:root[data-theme="dark"] .primario { color: #0b1020; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .primario { color: #0b1020; }
+}
+
+/* Botão com cara de link (Limpar filtros, Remover...) */
+.link {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--pri);
+  padding: 6px 8px;
+}
+
+.link:hover {
+  background: color-mix(in srgb, var(--pri) 8%, transparent);
 }
 
 /* Linha de controles: filtros, busca e botões dentro dos painéis */
@@ -285,97 +327,180 @@ input:focus-visible {
   margin-bottom: 14px;
 }
 
-
-/* Faixa do banco de dados (histórico): estado, botões e escolha do que mostrar */
-.banco {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-  background: var(--card);
-  border: 1px solid var(--bd);
-  border-radius: 12px;
-  padding: 10px 14px;
-  margin-bottom: 12px;
-  font-size: 13px;
-  box-shadow: var(--sombra);
+.erro {
+  color: var(--abx);
+  margin: 6px 0 0;
 }
 
-.banco:empty {
+.erro:empty {
   display: none;
 }
 
-.banco > span:nth-of-type(2) {
-  flex: 1;
-  min-width: 220px;
+
+/* ---------------------------------------------------------------------
+   5. BANCO E FILTROS
+   --------------------------------------------------------------------- */
+
+/* Indicador do banco: pílula pequena; clicar abre o quadro de detalhes */
+.banco-wrap {
+  position: relative;
 }
 
-.banco button {
-  font-size: 13px;
-  padding: 6px 12px;
-}
-
-.banco .primario {
-  background: var(--pri);
-  border-color: var(--pri);
-  color: #fff;
-}
-
-.banco .primario:hover {
-  background: color-mix(in srgb, var(--pri) 85%, #000);
-}
-
-.banco .link {
-  border-color: transparent;
-  background: transparent;
-  color: var(--pri);
-}
-
-/* Botão ✕ que esconde a faixa e versão recolhida (só o botão "Banco conectado") */
-.banco .fechar {
-  padding: 4px 8px;
-  color: var(--mu);
-  font-size: 15px;
-  line-height: 1;
-}
-
-.banco .fechar:hover {
-  color: var(--tx);
-}
-
-.banco.mini {
-  display: inline-flex;
-  padding: 2px 4px;
-  box-shadow: none;
-}
-
-.banco.mini button {
+.banco summary {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  font-size: 12.5px;
+  font-weight: 500;
   color: var(--mu);
+  padding: 6px 12px;
+  border: 1px solid var(--bd);
+  border-radius: 999px;
+  background: var(--card);
+  transition: border-color .15s, color .15s;
 }
 
-.banco .erro {
-  flex-basis: 100%;
+.banco summary::-webkit-details-marker {
+  display: none;
+}
+
+.banco summary:hover,
+.banco[open] summary {
+  color: var(--tx);
+  border-color: color-mix(in srgb, var(--mu) 40%, var(--bd));
+}
+
+/* Precisa de permissão: pílula em destaque para lembrar de reconectar */
+.banco.espera summary {
+  color: var(--pri);
+  border-color: color-mix(in srgb, var(--pri) 45%, var(--bd));
+  background: color-mix(in srgb, var(--pri) 7%, var(--card));
+}
+
+.banco.erro summary {
   color: var(--abx);
+  border-color: color-mix(in srgb, var(--abx) 45%, var(--bd));
 }
 
-/* Bolinha de estado: verde conectado, cinza desconectado */
+/* Bolinha de estado: verde conectado, cinza desconectado, azul aguardando, vermelho erro */
 .ponto {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex: none;
   background: var(--mu);
 }
 
-.ponto.on {
+.banco.on .ponto {
   background: var(--ok);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 20%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent);
 }
 
-/* Escolha "Base carregada" / "Histórico completo" */
+.banco.espera .ponto { background: var(--pri); }
+.banco.erro .ponto { background: var(--abx); }
+
+/* Quadro que abre embaixo da pílula */
+.banco-pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 20;
+  width: min(340px, calc(100vw - 32px));
+  padding: 14px 16px;
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: var(--raio);
+  box-shadow: var(--sombra2);
+  font-size: 13px;
+}
+
+.banco-pop p {
+  margin: 0 0 10px;
+}
+
+.banco-pop p:last-child {
+  margin-bottom: 0;
+}
+
+.pop-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pop-acoes button {
+  font-size: 13px;
+  padding: 6px 12px;
+}
+
+/* Filtros do topo (período, turno, categoria) */
+.filtros {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: var(--raio);
+  box-shadow: var(--sombra);
+}
+
+.campo,
+.campo label {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.campo > span,
+.campo label > span {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--mu);
+}
+
+.campo.datas {
+  flex-direction: row;
+  gap: 10px;
+}
+
+.campo.datas.hidden {
+  display: none;
+}
+
+.filtros select,
+.filtros input {
+  font-size: 13.5px;
+  padding: 7px 10px;
+  min-height: 36px;
+}
+
+.f-cat {
+  max-width: 280px;
+}
+
+.filtros .link {
+  align-self: flex-end;
+  min-height: 36px;
+}
+
+/* "Base carregada" / "Histórico completo" (só com o banco conectado), no fim da linha dos filtros */
+.campo-visao {
+  margin-left: auto;
+  align-self: flex-end;
+}
+
+.campo-visao:empty {
+  display: none;
+}
+
 .visao {
   display: inline-flex;
   padding: 3px;
@@ -387,35 +512,57 @@ input:focus-visible {
 .visao button {
   border: 0;
   background: transparent;
+  box-shadow: none;
   color: var(--mu);
-  padding: 5px 10px;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 8px;
 }
 
 .visao button.on {
   background: var(--card);
   color: var(--tx);
-  box-shadow: 0 1px 3px rgba(15, 23, 42, .12);
+  box-shadow: 0 1px 3px rgba(16, 24, 40, .14);
 }
 
 
 /* ---------------------------------------------------------------------
-   5. LAYOUT
+   6. LAYOUT
    --------------------------------------------------------------------- */
 
 /* Faixa de aviso com a origem dos dados */
 .aviso {
-  background: color-mix(in srgb, var(--pri) 8%, var(--card));
-  border: 1px solid color-mix(in srgb, var(--pri) 20%, var(--bd));
-  border-left: 4px solid var(--pri);
+  background: color-mix(in srgb, var(--pri) 6%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--pri) 18%, var(--bd));
   color: var(--tx);
   font-size: 13px;
   border-radius: 10px;
   padding: 9px 14px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .aviso:empty {
   display: none; /* some quando não há mensagem */
+}
+
+/* Quadro "Nenhuma planilha carregada" */
+.estado-vazio {
+  text-align: center;
+  padding: 40px 20px;
+  margin-bottom: 16px;
+  background: var(--card);
+  border: 1px dashed color-mix(in srgb, var(--mu) 40%, var(--bd));
+  border-radius: var(--raio);
+}
+
+.estado-vazio h2 {
+  font-size: 17px;
+  margin-bottom: 6px;
+}
+
+.estado-vazio p {
+  margin: 0 auto 16px;
+  max-width: 52ch;
 }
 
 /* Indicadores do topo (total, comerciais, tributárias...) */
@@ -427,23 +574,15 @@ input:focus-visible {
 }
 
 .kpi {
-  position: relative;
-  overflow: hidden;
+  display: flex;
+  flex-direction: column-reverse; /* rótulo em cima, número embaixo */
+  gap: 6px;
   background: var(--card);
   border: 1px solid var(--bd);
-  border-radius: 14px;
-  padding: 16px 18px 14px;
+  border-radius: var(--raio);
+  padding: 16px 18px;
   box-shadow: var(--sombra);
   --cor: var(--pri);
-}
-
-/* Faixa colorida no topo de cada indicador, na ordem em que aparecem */
-.kpi::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 4px;
-  background: var(--cor);
 }
 
 .kpi:nth-child(2) { --cor: var(--com); }
@@ -453,27 +592,38 @@ input:focus-visible {
 
 .kpi b {
   display: block;
-  font-size: 30px;
+  font-size: 28px;
   font-weight: 700;
   letter-spacing: -.02em;
-  line-height: 1.15;
+  line-height: 1.1;
   font-variant-numeric: tabular-nums;
   color: var(--tx);
 }
 
+/* Rótulo com uma bolinha na cor do indicador */
 .kpi span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   color: var(--mu);
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: .05em;
+}
+
+.kpi span::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  background: var(--cor);
+  flex: none;
 }
 
 /* Cartão que agrupa cada bloco de conteúdo */
 .painel {
   background: var(--card);
   border: 1px solid var(--bd);
-  border-radius: 16px;
+  border-radius: var(--raio);
   padding: 18px 20px;
   margin-bottom: 16px;
   box-shadow: var(--sombra);
@@ -491,9 +641,23 @@ input:focus-visible {
   margin-bottom: 0; /* o espaço entre painéis vem do gap da grade */
 }
 
+/* Formulário de regra (aba Categorias) */
+.form-regra {
+  justify-content: flex-start;
+}
+
+.form-regra input {
+  flex: 1 1 220px;
+}
+
+.form-regra select {
+  flex: 1 1 260px;
+  max-width: 420px;
+}
+
 
 /* ---------------------------------------------------------------------
-   6. RANKINGS (barras)
+   7. RANKINGS (barras)
    Estrutura de cada linha:
    .row > .top (nome + valor) + .tr (trilha) > .fl (preenchimento)
    --------------------------------------------------------------------- */
@@ -559,26 +723,26 @@ input:focus-visible {
 
 /* Trilha (fundo da barra) */
 .tr {
-  height: 10px;
+  height: 8px;
   background: var(--soft);
   border-radius: 999px;
-  margin-top: 5px;
+  margin-top: 6px;
   overflow: hidden;
 }
 
 /* Preenchimento da barra: comercial por padrão */
 .fl {
-  height: 10px;
+  height: 8px;
   border-radius: 999px;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--com) 70%, transparent), var(--com));
+  background: var(--com);
 }
 
 .fl.tri {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--tri) 70%, transparent), var(--tri));
+  background: var(--tri);
 }
 
 .fl.nd {
-  background: var(--mu); /* tipo não informado (divergência vazia) */
+  background: color-mix(in srgb, var(--mu) 60%, transparent); /* tipo não informado (divergência vazia) */
 }
 
 .fl.mix {
@@ -590,21 +754,20 @@ input:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
-  margin-top: 6px;
+  margin-top: 7px;
 }
 
 .chip {
   background: var(--soft);
-  border: 1px solid var(--bd);
   color: var(--mu);
   font-size: 11.5px;
   border-radius: 999px;
-  padding: 1px 9px;
+  padding: 2px 9px;
 }
 
 
 /* ---------------------------------------------------------------------
-   7. TABELA (aba Base detalhada)
+   8. TABELA (aba Base detalhada)
    --------------------------------------------------------------------- */
 .tab-wrap {
   overflow: auto;          /* rolagem lateral no celular */
@@ -649,23 +812,59 @@ th {
 
 /* Realce ao passar o mouse (linhas já resolvidas) */
 tbody tr:not(.aberta):hover td {
-  background: color-mix(in srgb, var(--pri) 5%, var(--card));
+  background: color-mix(in srgb, var(--pri) 4%, var(--card));
 }
 
-/* Caixa "Resolvido": maior que o padrão para facilitar o clique.
-   Para mudar o tamanho, altere width e height (mantenha os dois iguais). */
+/* Caixa "Resolvido": verde forte quando marcada.
+   Para mudar o tamanho, altere width e height (mantenha os dois iguais). A cor fica em --chk (seção 1). */
 td input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-grid;
+  place-content: center;
   width: 22px;
   height: 22px;
   padding: 0;
   margin: 0;
   vertical-align: middle;
-  accent-color: var(--pri);
+  border: 2px solid color-mix(in srgb, var(--mu) 55%, var(--bd));
+  border-radius: 7px;
+  background: var(--card);
+  box-shadow: none;
   cursor: pointer;
+}
+
+td input[type="checkbox"]::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%); /* sinal de "certo" */
+  transform: scale(0);
+  transition: transform .12s ease-out;
+}
+
+td input[type="checkbox"]:hover {
+  border-color: var(--chk);
+}
+
+td input[type="checkbox"]:checked {
+  background: var(--chk);
+  border-color: var(--chk);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--chk) 28%, transparent), 0 2px 8px -2px color-mix(in srgb, var(--chk) 80%, transparent);
+}
+
+td input[type="checkbox"]:checked::before {
+  transform: scale(1);
+}
+
+td input[type="checkbox"]:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--chk) 40%, transparent);
 }
 
 td input[type="checkbox"]:disabled {
   cursor: not-allowed; /* resolução já veio da planilha */
+  opacity: .6;
 }
 
 /* Seletor de categoria na coluna Categoria: compacto para caber na tabela.
@@ -678,6 +877,39 @@ td input[type="checkbox"]:disabled {
   max-width: 100%;
   text-overflow: ellipsis;
   border-radius: 8px;
+}
+
+/* Categoria sugerida automaticamente: borda tracejada e texto em itálico */
+.sel-cat.auto {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--pri) 50%, var(--bd));
+  color: color-mix(in srgb, var(--pri) 75%, var(--tx));
+  font-style: italic;
+}
+
+.sel-cat option,
+.sel-cat optgroup {
+  font-style: normal;
+  color: var(--tx);
+}
+
+/* Campo "Nº Chamado" */
+.in-chamado {
+  width: 130px;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 5px 9px;
+  border-radius: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.in-chamado:placeholder-shown {
+  border-style: dashed;
+}
+
+.in-chamado::placeholder {
+  color: var(--mu);
+  font-weight: 400;
 }
 
 /* Seletor de tipo (só aparece quando a planilha não diz o tipo).
@@ -720,24 +952,20 @@ tr.aberta td {
 }
 
 tr.aberta td:first-child {
-  box-shadow: inset 4px 0 0 var(--abx);
+  box-shadow: inset 3px 0 0 var(--abx);
 }
 
 /* Selo "Aberta" na coluna Resolução */
 .selo-aberta {
   display: inline-block;
-  background: var(--abx);
-  color: #fff;
+  color: var(--abx);
+  background: color-mix(in srgb, var(--abx) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--abx) 35%, transparent);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: .03em;
   border-radius: 999px;
-  padding: 2px 10px;
-}
-
-:root[data-theme="dark"] .selo-aberta { color: #1a0a0a; }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .selo-aberta { color: #1a0a0a; }
+  padding: 1px 9px;
 }
 
 /* Tipo da divergência na tabela, em forma de etiqueta */
@@ -747,6 +975,7 @@ tr.aberta td:first-child {
   font-weight: 600;
   border-radius: 999px;
   padding: 2px 9px;
+  cursor: help;
 }
 
 .tag.com {
@@ -767,7 +996,7 @@ tr.aberta td:first-child {
 
 
 /* ---------------------------------------------------------------------
-   8. ABA COMO USAR
+   9. ABA COMO USAR
    --------------------------------------------------------------------- */
 .ajuda p,
 .ajuda li {
@@ -793,43 +1022,60 @@ code {
 
 
 /* ---------------------------------------------------------------------
-   9. UTILITÁRIOS
+   10. UTILITÁRIOS
    --------------------------------------------------------------------- */
 .vazio {
   color: var(--mu); /* texto de apoio e mensagens de lista vazia */
 }
 
 .hidden {
-  display: none; /* usado para trocar de aba */
+  display: none !important; /* usado para trocar de aba e esconder controles */
 }
 
 
 /* ---------------------------------------------------------------------
-   10. CELULAR
+   11. CELULAR
    --------------------------------------------------------------------- */
 @media (max-width: 600px) {
   main {
     padding-top: 12px;
   }
 
-  .topo {
-    padding: 18px;
-    border-radius: 14px;
+  .sub {
+    display: none;
   }
 
-  h1 {
-    font-size: 20px;
+  .acoes {
+    width: 100%;
+    justify-content: space-between;
   }
 
-  .abas {
-    display: flex;
-    flex-wrap: nowrap;
-    overflow-x: auto; /* abas deslizam para o lado se não couberem */
+  .banco-pop {
+    left: 0;
+    right: auto;
   }
 
-  .abas .tab {
-    flex: 1 0 auto;
-    padding: 7px 12px;
+  .filtros {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .filtros select,
+  .filtros input,
+  .f-cat {
+    width: 100%;
+    max-width: none;
+  }
+
+  .campo.datas,
+  .campo:has(> .f-cat),
+  .campo-visao {
+    grid-column: 1 / -1;
+    margin-left: 0;
+  }
+
+  .campo.datas label {
+    flex: 1;
   }
 
   .kpi b {
