@@ -92,18 +92,26 @@ const CONFIG = {
     iniTri:      ['ini div trib','inicio div trib','inicio divergencia tributaria'],
     fimTri:      ['fim div trib','fim divergencia tributaria'],
     nf:          ['nf','nota fiscal','numero nf','numero da nf','n nf'],
+    cnpj:        ['cnpj','cnpj fornecedor','cnpj do fornecedor','cnpj emitente'],
     categoria:   ['categoria','categoria do produto'],
     resolucao:   ['data resolucao','data de resolucao','resolucao','data solucao']
   },
   OBRIGATORIAS: ['senha','agenda','cd','fornecedor','divergencia'],
   // Arquivo de produtos (Excel ou CSV) da aba Categorias: liga o EAN/PLU dos itens da NF, ou o fornecedor, a uma categoria.
   // Em cada coluna vale o primeiro nome da lista que existir no arquivo. É preciso ter Categoria e pelo menos PLU, EAN ou Fornecedor.
+  // Se nenhum nome bater, Fornecedor e Categoria aceitam qualquer coluna que contenha a palavra (ex.: "DESC FORNECEDOR"), menos colunas de código.
   COLUNAS_PRODUTOS: {
     plu:        ['plu','cod plu','codigo plu','codigo','cod produto','codigo produto','codigo do produto','codigo interno','cod interno','sku'],
     ean:        ['ean','ean13','gtin','cod barras','codigo de barras','codigo barras'],
-    fornecedor: ['fornecedor','nome fornecedor','fornecedor principal','razao social'],
-    categoria:  ['categoria','categoria produto','sub categoria','subcategoria','secao','departamento','familia']
+    fornecedor: ['fornecedor','nome fornecedor','nome do fornecedor','fornecedor nome','desc fornecedor','descricao fornecedor','fornecedor principal','razao social','razao social fornecedor'],
+    cnpj:       ['cnpj','cnpj fornecedor','cnpj do fornecedor'],
+    categoria:  ['categoria','desc categoria','descricao categoria','nome categoria','categoria produto','sub categoria','subcategoria','secao','departamento','familia']
   },
+  // Palavras ignoradas ao comparar nomes de fornecedor (base x arquivo de produtos): "NESTLE BRASIL LTDA" e "NESTLE" contam como o mesmo.
+  PALAVRAS_EMPRESA: ['ltda','sa','s a','me','epp','eireli','cia','companhia','comercio','comercial','industria','industrial','ind','com',
+    'distribuidora','distribuicao','dist','atacadista','atacado','de','do','da','dos','das','e','brasil','brasileira','grupo','group',
+    'alimentos','alimenticios','produtos','bebidas','cosmeticos','higiene','limpeza','embalagens','foods','food','participacoes',
+    'importadora','importacao','exportacao','imp','exp','servicos','logistica'],
   LINHAS_PARA_ACHAR_CABECALHO: 30  // exportações às vezes têm linhas de título antes do cabeçalho
 };
 
@@ -129,9 +137,10 @@ const acharRegistro = id => HIST.get(id) || DADOS.find(x => x.id === id);
 // Esta função calcula o que aparece: o que a planilha diz vale mais que a escolha manual.
 function aplicar(d){
   d.tipo = d.tipoArquivo !== 'nd' ? d.tipoArquivo : (d.tipoManual || 'nd');
-  d.categoriaAuto = d.categoriaManual || d.categoriaArquivo ? null : categoriaAutomatica(d); // sugestão (itens da NF, regra ou cadastro)
-  d.categoria = d.categoriaManual || d.categoriaArquivo || d.categoriaAuto?.cat || SEM_CATEGORIA;
-  d.categoriaOrigem = d.categoriaManual ? 'manual' : d.categoriaArquivo ? 'planilha' : d.categoriaAuto?.origem || '';
+  const plan = categoriaDaPlanilha(d.categoriaArquivo); // só vale se for uma categoria da lista (ou um grupo)
+  d.categoriaAuto = d.categoriaManual || plan ? null : categoriaAutomatica(d); // sugestão (itens da NF, arquivo de produtos ou regra)
+  d.categoria = d.categoriaManual || plan || d.categoriaAuto?.cat || d.categoriaArquivo || SEM_CATEGORIA;
+  d.categoriaOrigem = d.categoriaManual ? 'manual' : plan ? 'planilha' : d.categoriaAuto?.origem || (d.categoriaArquivo ? 'planilha' : '');
   d.chamado = d.chamadoManual || '';
   d.resolucao = d.resolucaoArquivo || d.resolucaoManual || null;
   d.deArquivo = !!d.resolucaoArquivo;
@@ -152,11 +161,11 @@ function seletorTipo(d){ // lista de tipo, só para NFs em que a planilha não d
     + ['nd', 'com', 'tri'].map(v => `<option value="${v}"${v === d.tipo ? ' selected' : ''}>${v === 'nd' ? 'Escolha o tipo…' : NOME_TIPO[v]}</option>`).join('')
     + '</select>';
 }
-const ORIGEM_AUTO = { nf: 'pelos itens da NF no cadastro de produtos', regra: 'pela regra do fornecedor', cadastro: 'pelo fornecedor no cadastro de produtos' };
+const ORIGEM_AUTO = { nf: 'pelos itens da NF no arquivo de produtos', regra: 'pela regra do fornecedor', cadastro: 'pelo fornecedor no arquivo de produtos' };
 function seletorCategoria(d){ // caixa de seleção da categoria de uma NF na Base detalhada
   const atual = d.categoria === SEM_CATEGORIA ? '' : d.categoria, opc = o => `<option value="${esc(o)}"${o === atual ? ' selected' : ''}>${esc(o)}</option>`;
   const naLista = Object.values(CONFIG.CATEGORIAS).some(l => l.includes(atual)), auto = ORIGEM_AUTO[d.categoriaOrigem];
-  const titulo = auto ? 'Sugerida ' + auto + ': ' + atual + '. Escolha na lista para confirmar ou trocar.' : (atual || 'Escolha a categoria');
+  const titulo = auto ? 'Sugerida ' + auto + (d.categoriaAuto?.nome ? ' (' + d.categoriaAuto.nome + ')' : '') + ': ' + atual + '. Escolha na lista para trocar.' : (atual || 'Escolha a categoria');
   return `<select class="sel-cat${auto ? ' auto' : ''}" data-cat="${esc(d.id)}" aria-label="Categoria da NF ${esc(d.nf)}" title="${esc(titulo)}">`
     + `<option value="">Escolha a categoria…</option>`
     + (atual && !naLista ? `<optgroup label="${d.categoriaOrigem === 'planilha' ? 'Da planilha' : 'Outras'}">${opc(atual)}</optgroup>` : '') // valor fora da lista
@@ -230,7 +239,7 @@ function montarRegistros(rows){ // converte linhas da planilha em objetos padron
     const senha = String(g('senha')).trim(), nfTexto = String(g('nf')).replace(/\s+/g, ' ').trim(); // texto inteiro da célula (ex.: "1602192 a 195")
     const nfNum = (nfTexto.match(/\d+/) || [''])[0].replace(/^0+/, ''); // 1º número: só para a identificação (mantém o que já foi salvo)
     return aplicar({ id: senha + '|' + nfNum, senha, nf: nfTexto, cd: String(g('cd')).trim() || '(sem CD)', status: String(g('status')).trim(),
-      fornecedor: String(g('fornecedor')).trim() || '(sem fornecedor)', categoriaArquivo: String(g('categoria')).trim(),
+      fornecedor: String(g('fornecedor')).trim() || '(sem fornecedor)', cnpj: String(g('cnpj')).replace(/\D/g, ''), categoriaArquivo: String(g('categoria')).trim(),
       tipoArquivo: tipo, tipoPorColuna: !div && tipo !== 'nd', // tipoArquivo: o que a planilha disse ('nd' = nada)
       agenda: ag, inicio, resolucaoArquivo: re, descricao: div });
   }
@@ -368,9 +377,10 @@ function notasDaSenha(d){ // liga a senha à(s) nota(s) pelo(s) número(s) da NF
 }
 
 /* ===== 3c) CATEGORIA AUTOMÁTICA (cadastro de produtos e regras por fornecedor) =====
-   Ordem: 1) itens das NFs ligadas à senha (EAN ou PLU no cadastro de produtos); 2) regra do fornecedor; 3) fornecedor no cadastro.
-   A categoria da planilha e a escolhida na tela sempre valem mais que a sugerida. */
-let PRODUTOS = { nome: '', total: 0, porPlu: new Map(), porEan: new Map(), porForn: new Map() };
+   Ordem: 1) itens das NFs ligadas à senha (EAN ou PLU no arquivo de produtos); 2) fornecedor no arquivo de produtos
+   (pelo CNPJ ou pelo nome); 3) regra do fornecedor (para quem não está no arquivo).
+   A escolhida na tela sempre vale mais. A da planilha também, desde que seja uma categoria da lista. */
+let PRODUTOS = { nome: '', total: 0, porPlu: new Map(), porEan: new Map(), porForn: new Map(), porCnpj: new Map() };
 let REGRAS = lerSalvo(CONFIG.CHAVE_REGRAS); if(!Array.isArray(REGRAS)) REGRAS = []; // [{ forn, cat, origem: 'tela'|'aprendida', alterado, removida }]
 const CACHE_FORN = new Map(); // fornecedor -> categoria mais comum no cadastro (evita refazer a busca a cada desenho)
 const codigo = v => { const t = String(v ?? '').trim().toUpperCase(); return /^\d+$/.test(t) ? t.replace(/^0+(?=\d)/, '') : t; }; // compara códigos sem zeros à esquerda
@@ -383,30 +393,43 @@ function mapearCategoria(t){ // texto do cadastro -> categoria da lista (pelo no
   }
   return String(t).trim();
 }
+function categoriaDaPlanilha(t){ const c = mapearCategoria(t); return c && (Object.values(CONFIG.CATEGORIAS).flat().includes(c) || c in CONFIG.CATEGORIAS) ? c : ''; }
+const NAO_E_NOME = /^(cod|codigo|cd|id|cnpj|num|numero|n|qtd|seq)\b/; // colunas de código não servem como nome
 function acharCabecalhoProdutos(rows){ // mesma ideia de acharCabecalho, mas cada coluna pega o primeiro nome da lista que existir
   for(let i = 0; i < Math.min(rows.length, CONFIG.LINHAS_PARA_ACHAR_CABECALHO); i++){
     const cab = rows[i].map(norm), idx = {};
     for(const [k, nomes] of Object.entries(CONFIG.COLUNAS_PRODUTOS)) idx[k] = nomes.map(norm).map(x => cab.indexOf(x)).find(x => x >= 0) ?? -1;
+    for(const [k, raiz] of [['fornecedor', 'fornec'], ['categoria', 'categ']]) // nome parecido: "DESC FORNECEDOR", "CATEGORIA NIVEL 2"...
+      if(idx[k] < 0) idx[k] = cab.findIndex(h => h.includes(raiz) && !NAO_E_NOME.test(h));
     if(idx.categoria >= 0 && (idx.plu >= 0 || idx.ean >= 0 || idx.fornecedor >= 0)) return { linha: i, idx };
   }
   return null;
 }
-function indexarProdutos(nome, lista){ // lista: [plu, ean, fornecedor, categoria]
-  const porPlu = new Map(), porEan = new Map(), porForn = new Map();
-  for(const [plu, ean, fo, cat] of lista){ if(!cat) continue;
+const PALAVRAS_EMPRESA = new Set(CONFIG.PALAVRAS_EMPRESA.map(norm));
+function nucleo(f){ // nome do fornecedor sem código na frente e sem LTDA, S.A., COMERCIO, DISTRIBUIDORA...: "0123 - NESTLE BRASIL LTDA" -> "nestle"
+  const n = norm(f).replace(/^\d+\s+/, ''), t = n.split(' ').filter(p => p.length > 1 && !PALAVRAS_EMPRESA.has(p) && !/^\d+$/.test(p)); // letras soltas (S A, S/A) também saem
+  return t.join(' ') || n;
+}
+function indexarProdutos(nome, lista){ // lista: [plu, ean, fornecedor, categoria, cnpj]
+  const porPlu = new Map(), porEan = new Map(), porForn = new Map(), porCnpj = new Map();
+  const somar = (mapa, k, fo, cat) => { if(!mapa.has(k)) mapa.set(k, { nome: fo, cats: new Map() }); const m = mapa.get(k).cats; m.set(cat, (m.get(cat) || 0) + 1); };
+  for(const [plu, ean, fo, cat, cnpj] of lista){ if(!cat) continue;
     if(plu) porPlu.set(plu, cat); if(ean) porEan.set(ean, cat);
-    if(fo){ const k = norm(fo); if(!porForn.has(k)) porForn.set(k, new Map()); const m = porForn.get(k); m.set(cat, (m.get(cat) || 0) + 1); } }
-  PRODUTOS = { nome, total: lista.length, porPlu, porEan, porForn }; CACHE_FORN.clear();
+    if(fo) somar(porForn, nucleo(fo), fo, cat);
+    if(cnpj) somar(porCnpj, cnpj, fo || cnpj, cat); }
+  PRODUTOS = { nome, total: lista.length, porPlu, porEan, porForn, porCnpj }; CACHE_FORN.clear();
 }
 async function carregarProdutos(f){
   try{
     const rows = await lerPlanilha(f, acharCabecalhoProdutos), c = acharCabecalhoProdutos(rows);
     if(!c) throw new Error('Não encontrei as colunas. O arquivo precisa de uma coluna Categoria e de pelo menos uma destas: PLU (ou Código), EAN ou Fornecedor.');
     const g = (r, k) => c.idx[k] < 0 ? '' : r[c.idx[k]];
-    const lista = rows.slice(c.linha + 1).map(r => [codigo(g(r, 'plu')), codigo(g(r, 'ean')), String(g(r, 'fornecedor') ?? '').trim(), mapearCategoria(g(r, 'categoria'))])
-      .filter(x => x[3] && (x[0] || x[1] || x[2]));
+    const lista = rows.slice(c.linha + 1).map(r => [codigo(g(r, 'plu')), codigo(g(r, 'ean')), String(g(r, 'fornecedor') ?? '').trim(), mapearCategoria(g(r, 'categoria')), String(g(r, 'cnpj') ?? '').replace(/\D/g, '')])
+      .filter(x => x[3] && (x[0] || x[1] || x[2] || x[4]));
     if(!lista.length) throw new Error('Nenhuma linha com categoria.');
-    indexarProdutos(f.name, lista); await idbGravar('produtos', { nome: f.name, lista }); $('erroProdutos').textContent = '';
+    const cab = rows[c.linha], usadas = Object.entries(c.idx).filter(([, i]) => i >= 0).map(([k, i]) => k.toUpperCase() + ' = "' + String(cab[i]).trim() + '"');
+    indexarProdutos(f.name, lista); PRODUTOS.colunas = usadas.join(', ');
+    await idbGravar('produtos', { nome: f.name, lista, colunas: PRODUTOS.colunas }); $('erroProdutos').textContent = '';
     redesenhar();
   } catch(e){ $('erroProdutos').textContent = 'Não foi possível ler o arquivo de produtos. ' + e.message; }
 }
@@ -417,20 +440,32 @@ function regraDoFornecedor(f){ // regra cujo texto está contido no nome do forn
   for(const r of lista){ const k = norm(r.forn); if(k && n.includes(k) && (!melhor || k.length > norm(melhor.forn).length)) melhor = r; }
   return melhor;
 }
-function categoriaDoCadastro(f){ // categoria mais comum dos produtos do fornecedor no cadastro
-  const n = norm(f); if(!n || !PRODUTOS.porForn.size) return '';
-  if(!CACHE_FORN.has(n)){ let m = PRODUTOS.porForn.get(n);
-    if(!m){ const ini = s => s.split(' ').slice(0, 2).join(' '); for(const [k, v] of PRODUTOS.porForn) if(k.includes(n) || n.includes(k) || ini(k) === ini(n)){ m = v; break; } }
-    CACHE_FORN.set(n, m ? maisFrequente(m) : ''); }
-  return CACHE_FORN.get(n);
+function acharNoCadastro(f){ // fornecedor da base -> fornecedor do arquivo de produtos, pelo nome (sem LTDA, S.A., etc.)
+  const k = nucleo(f); if(!k) return null;
+  const exato = PRODUTOS.porForn.get(k); if(exato) return exato;
+  const tk = new Set(k.split(' ')); let melhor = null, nota = 0;
+  for(const [kk, v] of PRODUTOS.porForn){
+    const t2 = kk.split(' '), comuns = t2.filter(x => tk.has(x) && x.length >= 3).length; if(!comuns) continue;
+    let s = comuns / Math.max(tk.size, t2.length); // parte das palavras em comum
+    if(Math.min(k.length, kk.length) >= 4 && ((' ' + kk + ' ').includes(' ' + k + ' ') || (' ' + k + ' ').includes(' ' + kk + ' '))) s = Math.max(s, .8); // um nome contém o outro
+    if(s > nota){ nota = s; melhor = v; } }
+  return nota >= .5 ? melhor : null;
+}
+function categoriaDoCadastro(f, cnpj){ // categoria mais comum dos produtos do fornecedor no arquivo: { cat, nome } ou null
+  if(!PRODUTOS.porForn.size && !PRODUTOS.porCnpj.size) return null;
+  const chave = (cnpj || '') + '|' + norm(f);
+  if(!CACHE_FORN.has(chave)){ const e = (cnpj && PRODUTOS.porCnpj.get(cnpj)) || acharNoCadastro(f);
+    CACHE_FORN.set(chave, e ? { cat: maisFrequente(e.cats), nome: e.nome } : null); }
+  return CACHE_FORN.get(chave);
 }
 function categoriaAutomatica(d){
-  if(PRODUTOS.total && NOTAS.length){ const cont = new Map();
-    for(const n of notasDaSenha(d)) for(const i of n.itens){
+  const notas = NOTAS.length ? notasDaSenha(d) : [];
+  if(PRODUTOS.total && notas.length){ const cont = new Map();
+    for(const n of notas) for(const i of n.itens){
       const c = PRODUTOS.porEan.get(codigo(i.ean)) || PRODUTOS.porPlu.get(codigo(i.cod)); if(c) cont.set(c, (cont.get(c) || 0) + 1); }
     const c = maisFrequente(cont); if(c) return { cat: c, origem: 'nf' }; }
-  const r = regraDoFornecedor(d.fornecedor); if(r) return { cat: r.cat, origem: 'regra' };
-  const c = categoriaDoCadastro(d.fornecedor); return c ? { cat: c, origem: 'cadastro' } : null;
+  const c = categoriaDoCadastro(d.fornecedor, d.cnpj || notas[0]?.cnpj?.replace(/\D/g, '')); if(c?.cat) return { cat: c.cat, nome: c.nome, origem: 'cadastro' };
+  const r = regraDoFornecedor(d.fornecedor); return r ? { cat: r.cat, origem: 'regra' } : null;
 }
 function recalcularCategorias(){ for(const d of DADOS) aplicar(d); for(const d of HIST.values()) aplicar(d); }
 function salvarRegra(forn, cat, origem){ // cria ou troca a regra deste fornecedor (cat vazio = remove)
@@ -448,9 +483,18 @@ function juntarRegras(lista){ // regras vindas do banco: em cada fornecedor vale
 }
 function desenharCategorias(){ // aba Categorias: resumo do cadastro, regras e quantas NFs receberam categoria sugerida
   const vs = todas(), conta = o => vs.filter(d => d.categoriaOrigem === o).length;
-  $('resumoProdutos').innerHTML = PRODUTOS.total ? `<b>${esc(PRODUTOS.nome)}</b>: ${PRODUTOS.total} produtos (${PRODUTOS.porEan.size} com EAN, ${PRODUTOS.porPlu.size} com PLU), ${PRODUTOS.porForn.size} fornecedores.` : 'Nenhum arquivo de produtos carregado.';
+  $('resumoProdutos').innerHTML = PRODUTOS.total ? `<b>${esc(PRODUTOS.nome)}</b>: ${PRODUTOS.total} produtos (${PRODUTOS.porEan.size} com EAN, ${PRODUTOS.porPlu.size} com PLU), ${PRODUTOS.porForn.size} fornecedores.`
+    + (PRODUTOS.colunas ? `<br><span class="mini">Colunas usadas: ${esc(PRODUTOS.colunas)}</span>` : '') : 'Nenhum arquivo de produtos carregado.';
+  // Fornecedores da base x arquivo: com quem cada um foi ligado e quem ficou de fora
+  const porForn = new Map(); for(const d of vs){ if(!porForn.has(d.fornecedor)) porForn.set(d.fornecedor, { n: 0, d }); porForn.get(d.fornecedor).n++; }
+  const ligados = [], fora = [];
+  if(PRODUTOS.total) for(const [f, { n, d }] of porForn){ const c = categoriaDoCadastro(f, d.cnpj); (c?.cat ? ligados : fora).push({ f, n, c }); }
+  $('ligacaoForn').classList.toggle('hidden', !PRODUTOS.total || !porForn.size);
+  $('resumoLigacao').textContent = `${ligados.length} de ${porForn.size} fornecedores da base foram encontrados no arquivo de produtos.` + (fora.length ? ' Os que faltam podem ganhar uma regra abaixo.' : '');
+  $('corpoLigacao').innerHTML = [...fora.sort((a, b) => b.n - a.n), ...ligados.sort((a, b) => b.n - a.n)].map(x => `<tr class="${x.c ? '' : 'sem-lig'}"><td>${esc(x.f)}</td><td>${x.n}</td>`
+    + (x.c ? `<td>${esc(x.c.nome)}</td><td>${esc(x.c.cat)}</td>` : `<td colspan="2"><span class="selo-aberta">Não encontrado</span> <button type="button" class="link" data-criar-regra="${esc(x.f)}">Criar regra</button></td>`) + '</tr>').join('');
   $('btnTirarProdutos').classList.toggle('hidden', !PRODUTOS.total);
-  $('resumoAuto').textContent = vs.length ? `Categoria sugerida em ${conta('nf') + conta('regra') + conta('cadastro')} de ${vs.length} NFs: ${conta('nf')} pelos itens da NF, ${conta('regra')} pela regra do fornecedor, ${conta('cadastro')} pelo cadastro. ${vs.filter(d => d.categoria === SEM_CATEGORIA).length} continuam sem categoria.` : '';
+  $('resumoAuto').textContent = vs.length ? `Categoria automática em ${conta('nf') + conta('regra') + conta('cadastro')} de ${vs.length} NFs: ${conta('nf')} pelos itens da NF, ${conta('cadastro')} pelo fornecedor no arquivo de produtos, ${conta('regra')} pela regra do fornecedor. ${vs.filter(d => d.categoria === SEM_CATEGORIA).length} continuam sem categoria.` : '';
   const sel = $('regraCat'); if(!sel.options.length) sel.innerHTML = '<option value="">Escolha a categoria…</option>' + Object.entries(CONFIG.CATEGORIAS).map(([g, l]) => `<optgroup label="${esc(g)}">${l.map(c => `<option>${esc(c)}</option>`).join('')}</optgroup>`).join('');
   $('listaFornecedores').innerHTML = [...new Set(vs.map(d => d.fornecedor))].sort().map(f => `<option value="${esc(f)}">`).join('');
   const nomeOrigem = { config: 'Fixa (CONFIG)', tela: 'Criada na tela', aprendida: 'Aprendida de uma escolha' };
@@ -479,7 +523,7 @@ function desenharNotas(){
    Funciona no Edge e no Chrome. O navegador pede permissão para mexer no arquivo uma vez por sessão. */
 const BANCO = { handle: null, ok: false, nome: '', lido: 0, atualizado: null, timer: null, erro: '' }; // erro: última falha, fica visível até dar certo
 const temSuporteBanco = () => 'showOpenFilePicker' in window;
-const CAMPOS_ARQUIVO = ['senha','nf','cd','status','fornecedor','categoriaArquivo','tipoArquivo','tipoPorColuna','agenda','inicio','resolucaoArquivo','descricao'];
+const CAMPOS_ARQUIVO = ['senha','nf','cd','status','fornecedor','cnpj','categoriaArquivo','tipoArquivo','tipoPorColuna','agenda','inicio','resolucaoArquivo','descricao'];
 const CAMPOS_MANUAIS = ['tipoManual','categoriaManual','resolucaoManual','chamadoManual'];
 const CAMPOS_DATA = ['agenda','inicio','resolucaoArquivo','resolucaoManual','primeiraVez','ultimaVez'];
 // Guarda o "endereço" do arquivo escolhido no navegador, para reconectar sem procurar de novo
@@ -742,6 +786,7 @@ $('arqProdutos').onchange = e => { if(e.target.files[0]) carregarProdutos(e.targ
 $('btnTirarProdutos').onclick = removerProdutos;
 $('formRegra').onsubmit = e => { e.preventDefault(); const f = $('regraForn').value.trim(), c = $('regraCat').value;
   if(!f || !c) return; salvarRegra(f, c, 'tela'); $('regraForn').value = ''; $('regraCat').value = ''; redesenhar(); };
+$('corpoLigacao').onclick = e => { const f = e.target.dataset?.criarRegra; if(f != null){ $('regraForn').value = f; $('regraCat').focus(); $('regraCat').scrollIntoView({ block: 'center' }); } };
 $('corpoRegras').onclick = e => { const f = e.target.dataset?.tirarRegra; if(f != null){ salvarRegra(f, '', 'tela'); redesenhar(); } };
 $('btnXml').onclick = () => $('arqXml').click();
 $('arqXml').onchange = e => carregarXmls([...e.target.files]);
@@ -753,5 +798,5 @@ $('chave').oninput = e => {
 try{
   if(CONFIG.CSV_INICIAL.trim()) definirDados(montarRegistros(lerCSV(CONFIG.CSV_INICIAL)), 'Dados embutidos na página'); else redesenhar();
 } catch(e){ $('aviso').textContent = e.message; }
-idbLer('produtos').then(p => { if(p?.lista?.length){ indexarProdutos(p.nome, p.lista); redesenhar(); } }); // volta o cadastro de produtos usado da última vez
+idbLer('produtos').then(p => { if(p?.lista?.length){ indexarProdutos(p.nome, p.lista); PRODUTOS.colunas = p.colunas || ''; redesenhar(); } }); // volta o cadastro de produtos usado da última vez
 iniciarBanco(); // volta ao banco usado da última vez (se o navegador ainda tiver permissão)

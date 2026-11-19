@@ -110,14 +110,19 @@
 <section id="aba-categorias" class="hidden">
   <div class="painel">
     <h2>Cadastro de produtos</h2>
-    <p class="vazio">Arquivo Excel ou CSV dos produtos com <b>Categoria</b> e pelo menos uma destas colunas: <b>PLU</b> (ou Código), <b>EAN</b> ou <b>Fornecedor</b>. Com os XML das NFs carregados, cada NF recebe a categoria mais comum dos seus itens. Sem XML, vale a categoria mais comum do fornecedor.</p>
+    <p class="vazio">Arquivo Excel ou CSV dos produtos (PLU) com <b>Fornecedor</b> e <b>Categoria</b>. Ao carregar, cada NF sem categoria recebe automaticamente a categoria mais comum dos produtos daquele fornecedor. O nome é comparado sem LTDA, S.A., COMÉRCIO, DISTRIBUIDORA etc., e pelo CNPJ quando as duas planilhas têm essa coluna. Com os XML das NFs carregados, vale a categoria dos itens da própria nota (pelo EAN ou PLU). Você continua podendo trocar a categoria na Base detalhada.</p>
     <div class="bar"><label><input type="file" id="arqProdutos" accept=".csv,.xlsx,.xlsm,.xls,.htm,.html" class="hidden"><button id="btnProdutos" type="button">Carregar arquivo de produtos</button></label>
       <span class="vazio" id="resumoProdutos" style="flex:1"></span><button type="button" id="btnTirarProdutos" class="link hidden">Remover</button></div>
     <p class="erro" id="erroProdutos"></p>
   </div>
+  <div class="painel hidden" id="ligacaoForn">
+    <h2>Fornecedores da base no arquivo de produtos</h2>
+    <p class="vazio" id="resumoLigacao"></p>
+    <div class="tab-wrap"><table><thead><tr><th>Fornecedor na base</th><th>NFs</th><th>Encontrado no arquivo como</th><th>Categoria aplicada</th></tr></thead><tbody id="corpoLigacao"></tbody></table></div>
+  </div>
   <div class="painel">
     <h2>Regras por fornecedor</h2>
-    <p class="vazio">Quando o nome do fornecedor contém o texto da regra, a NF recebe a categoria (exemplo: AMBEV vai para Líquida). A primeira categoria escolhida na Base detalhada para um fornecedor sem regra vira uma regra aprendida.</p>
+    <p class="vazio">Para fornecedores que não estão no arquivo de produtos: quando o nome do fornecedor contém o texto da regra, a NF recebe a categoria (exemplo: AMBEV vai para Líquida). A primeira categoria escolhida na Base detalhada para um fornecedor sem regra vira uma regra aprendida.</p>
     <form class="bar form-regra" id="formRegra">
       <input id="regraForn" type="text" list="listaFornecedores" placeholder="Fornecedor (ou parte do nome)" required>
       <datalist id="listaFornecedores"></datalist>
@@ -202,7 +207,7 @@
     <h3>Notas fiscais</h3>
     <p>Na aba <b>Notas fiscais</b>, carregue os arquivos XML das notas (vários de uma vez). O painel liga cada senha à nota pelo número da NF, desempata pelo fornecedor quando o número se repete e lista os produtos de cada nota nesta mesma aba. O campo da chave de acesso decodifica os 44 dígitos e confere o dígito verificador.</p>
     <h3>Categorias automáticas</h3>
-    <p>Na aba <b>Categorias</b>, o painel sugere a categoria das NFs que não têm uma. Ordem: 1) os itens dos XML da NF, procurados pelo <b>EAN</b> (o mais confiável) ou pelo código do produto (<b>PLU</b>) no arquivo de produtos; 2) a regra do fornecedor; 3) a categoria mais comum do fornecedor no arquivo de produtos. A categoria da planilha e a escolhida na tela sempre valem mais. O arquivo de produtos fica guardado neste navegador. Regras fixas podem ser escritas em <code>FORNECEDOR_CATEGORIA</code> no <code>CONFIG</code>, e os nomes de coluna aceitos ficam em <code>COLUNAS_PRODUTOS</code>.</p>
+    <p>Na aba <b>Categorias</b>, o painel sugere a categoria das NFs que não têm uma. Ordem: 1) os itens dos XML da NF, procurados pelo <b>EAN</b> ou pelo código do produto (<b>PLU</b>) no arquivo de produtos; 2) a categoria mais comum dos produtos do fornecedor no arquivo de produtos (pelo CNPJ ou pelo nome, sem LTDA, S.A. etc.); 3) a regra do fornecedor, para quem não está no arquivo. A escolhida na tela sempre vale mais. A da planilha também, mas só se for uma das categorias da lista. A tabela <b>Fornecedores da base no arquivo de produtos</b> mostra com quem cada fornecedor foi ligado e quais não foram encontrados. O arquivo de produtos fica guardado neste navegador. Regras fixas podem ser escritas em <code>FORNECEDOR_CATEGORIA</code> no <code>CONFIG</code>, e os nomes de coluna aceitos ficam em <code>COLUNAS_PRODUTOS</code>.</p>
     <h3>Como alterar o painel</h3>
     <p>Todo ajuste simples está no bloco <code>CONFIG</code>, no início do arquivo <code>script.js</code>, com comentários. Exemplos: mudar o top 10 para top 5 (<code>TOP_N</code>), usar a mediana em vez da média (<code>METRICA_TEMPO</code>), aceitar outros nomes de coluna (<code>COLUNAS</code>) ou fixar os dados dentro da página (<code>CSV_INICIAL</code>). A lista de categorias do seletor fica em <code>CATEGORIAS</code>: para incluir, tirar ou corrigir uma categoria, edite ali. As cores ficam no início do arquivo <code>style.css</code>. O tamanho da caixa <b>Resolvido</b> fica na seção 7 (Tabela) do <code>style.css</code>, em <code>width</code> e <code>height</code>, e a cor dela em <code>--chk</code>. As cores do destaque das senhas em aberto ficam em <code>--ab</code> (fundo) e <code>--abx</code> (faixa e selo), no início do <code>style.css</code>.</p>
     <h3>Compartilhar com o time</h3>
