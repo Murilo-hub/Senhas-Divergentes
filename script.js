@@ -139,7 +139,11 @@ function aplicar(d){
 }
 const inicioDe = d => d.inicio || d.agenda; // conta do INI DIV da planilha; sem ele, da data/hora da agenda
 const horas = d => inicioDe(d) && d.resolucao ? Math.max(0, (d.resolucao - inicioDe(d)) / 36e5) : null; // tempo de resolução em horas
-const hh = n => nf(n) + ' h';
+const hh = n => { // duração em horas -> "10:54" (horas:minutos); a partir de 24 h, com os dias na frente: "8d 18:00"
+  const m = Math.round(n * 60), d = Math.floor(m / 1440), r = m % 1440;
+  const t = String(Math.floor(r / 60)).padStart(2, '0') + ':' + String(r % 60).padStart(2, '0');
+  return d ? d + 'd ' + t : t;
+};
 // O que é marcado na tela (resoluções e categorias) fica guardado só neste navegador
 function lerSalvo(chave = CONFIG.CHAVE_RESOLUCOES){ try{ return JSON.parse(localStorage.getItem(chave) || '{}'); }catch(e){ return {}; } }
 function gravarSalvo(o, chave = CONFIG.CHAVE_RESOLUCOES){ try{ localStorage.setItem(chave, JSON.stringify(o)); }catch(e){} }
