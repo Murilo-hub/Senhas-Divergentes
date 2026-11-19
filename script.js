@@ -196,8 +196,9 @@ function montarRegistros(rows){ // converte linhas da planilha em objetos padron
       : temTri ? 'tri' : temCom ? 'com' : 'nd';
     const inicio = (tipo === 'tri' ? it : tipo === 'com' ? ic : null) || it || ic; // início da tratativa (sem ele, conta da agenda)
     const re = paraData(g('resolucao')) || (tipo === 'tri' ? ft : tipo === 'com' ? fc : null); // resolução: coluna própria ou FIM DIV do tipo
-    const senha = String(g('senha')).trim(), nfNum = (String(g('nf')).match(/\d+/) || [''])[0].replace(/^0+/, '');
-    return aplicar({ id: senha + '|' + nfNum, senha, nf: nfNum, cd: String(g('cd')).trim() || '(sem CD)', status: String(g('status')).trim(),
+    const senha = String(g('senha')).trim(), nfTexto = String(g('nf')).replace(/\s+/g, ' ').trim(); // texto inteiro da célula (ex.: "1602192 a 195")
+    const nfNum = (nfTexto.match(/\d+/) || [''])[0].replace(/^0+/, ''); // 1º número: só para a identificação (mantém o que já foi salvo)
+    return aplicar({ id: senha + '|' + nfNum, senha, nf: nfTexto, cd: String(g('cd')).trim() || '(sem CD)', status: String(g('status')).trim(),
       fornecedor: String(g('fornecedor')).trim() || '(sem fornecedor)', categoriaArquivo: String(g('categoria')).trim(),
       tipoArquivo: tipo, tipoPorColuna: !div && tipo !== 'nd', // tipoArquivo: o que a planilha disse ('nd' = nada)
       agenda: ag, inicio, resolucaoArquivo: re, descricao: div });
@@ -297,8 +298,20 @@ function mesmoFornecedor(a, b){ // compara nomes ignorando acento e caixa; aceit
   const x = norm(a), y = norm(b), ini = s => s.split(' ').slice(0, 2).join(' ');
   return !!x && !!y && (x.includes(y) || y.includes(x) || ini(x) === ini(y));
 }
-function notasDaSenha(d){ // liga a senha à(s) nota(s) pelo número da NF; se o número se repete, desempata pelo fornecedor
-  const c = NOTAS_POR_NF.get(d.nf) || []; return c.length <= 1 ? c : c.filter(n => mesmoFornecedor(n.emitente, d.fornecedor));
+function numerosDaNf(texto){ // "1602192 a 195" -> 1602192..1602195; "1602192/193" -> 1602192 e 1602193
+  const partes = String(texto ?? '').split(/(\d+)/), nums = [];
+  let ant = null, intervalo = false;
+  for(let i = 1; i < partes.length; i += 2){
+    let n = partes[i].replace(/^0+/, '') || '0';
+    if(ant && n.length < ant.length) n = ant.slice(0, ant.length - n.length) + n; // final abreviado: completa com o começo do anterior
+    if(intervalo && ant && +n > +ant && +n - +ant <= 200) for(let k = +ant + 1; k < +n; k++) nums.push(String(k));
+    nums.push(n); ant = n;
+    intervalo = /^\s*(a|ate|até|-|–|à)\s*$/i.test(partes[i + 1] || ''); // separador seguinte indica faixa?
+  }
+  return [...new Set(nums)];
+}
+function notasDaSenha(d){ // liga a senha à(s) nota(s) pelo(s) número(s) da NF; se o número se repete, desempata pelo fornecedor
+  return numerosDaNf(d.nf).flatMap(num => { const c = NOTAS_POR_NF.get(num) || []; return c.length <= 1 ? c : c.filter(n => mesmoFornecedor(n.emitente, d.fornecedor)); });
 }
 async function carregarXmls(files){
   let erros = 0;
@@ -417,22 +430,30 @@ async function iniciarBanco(){ // ao abrir a página: tenta voltar ao arquivo us
   try{ if(await h.queryPermission({ mode: 'readwrite' }) === 'granted') return conectarBanco(h); } catch(e){}
   desenharBanco(); // sem permissão ainda: mostra o botão Reconectar
 }
+const CHAVE_BANCO_OCULTO = 'painel-senhas-banco-oculto'; // lembra se a faixa do banco conectado foi escondida
+let bancoOculto = (() => { try{ return localStorage.getItem(CHAVE_BANCO_OCULTO) === '1'; }catch(e){ return false; } })();
+function ocultarBanco(v){ bancoOculto = v; try{ localStorage.setItem(CHAVE_BANCO_OCULTO, v ? '1' : '0'); }catch(e){} desenharBanco(); }
 function desenharBanco(msg){
-  const el = $('banco'), btn = (id, t, cls = '') => `<button type="button" id="${id}" class="${cls}">${t}</button>`;
+  const el = $('banco'), btn = (id, t, cls = '', tit = '') => `<button type="button" id="${id}" class="${cls}"${tit ? ` title="${tit}" aria-label="${tit}"` : ''}>${t}</button>`;
   let html;
+  el.classList.toggle('mini', !!(BANCO.ok && bancoOculto && !msg));
+  if(BANCO.ok && bancoOculto && !msg){ // faixa escondida: fica só um botão pequeno para mostrar de novo
+    el.innerHTML = btn('bMostrar', '<span class="ponto on"></span>Banco conectado', 'link', 'Mostrar a faixa do banco de dados');
+    $('bMostrar').onclick = () => ocultarBanco(false); return;
+  }
   if(!temSuporteBanco()) html = '<span class="ponto off"></span><span><b>Banco de dados indisponível neste navegador.</b> Abra o painel no Edge ou no Chrome para guardar o histórico.</span>';
   else if(BANCO.ok){
     const n = HIST.size, ab = [...HIST.values()].filter(d => !d.resolucao).length;
     html = `<span class="ponto on"></span><span><b>Banco conectado:</b> ${esc(BANCO.nome)} · ${n} ${n === 1 ? 'senha' : 'senhas'} no histórico (${ab} em aberto)`
       + (BANCO.atualizado ? ' · gravado ' + dataHoraBR(BANCO.atualizado) : '') + '</span>'
       + `<span class="visao" role="group" aria-label="O que mostrar">${btn('vBase', 'Base carregada', VISAO === 'base' ? 'on' : '')}${btn('vHist', 'Histórico completo', VISAO === 'hist' ? 'on' : '')}</span>`
-      + btn('bTrocar', 'Trocar arquivo', 'link');
+      + btn('bTrocar', 'Trocar arquivo', 'link') + btn('bOcultar', '✕', 'link fechar', 'Esconder a faixa do banco de dados');
   } else if(BANCO.handle) html = `<span class="ponto off"></span><span><b>Banco:</b> ${esc(BANCO.nome)} precisa da sua permissão para ser usado nesta sessão.</span>` + btn('bRecon', 'Reconectar', 'primario') + btn('bAbrir', 'Abrir outro', 'link');
   else html = '<span class="ponto off"></span><span><b>Banco de dados desconectado:</b> o histórico não está sendo salvo. Crie o banco numa pasta compartilhada do OneDrive ou abra o que o time já usa.</span>'
     + btn('bCriar', 'Criar banco', 'primario') + btn('bAbrir', 'Abrir banco existente');
   el.innerHTML = html + (msg ? `<span class="erro">${esc(msg)}</span>` : '');
   const liga = (id, fn) => { const b = $(id); if(b) b.onclick = fn; };
-  liga('bCriar', criarBanco); liga('bAbrir', abrirBanco); liga('bTrocar', abrirBanco); liga('bRecon', reconectarBanco);
+  liga('bCriar', criarBanco); liga('bAbrir', abrirBanco); liga('bTrocar', abrirBanco); liga('bRecon', reconectarBanco); liga('bOcultar', () => ocultarBanco(true));
   liga('vBase', () => { VISAO = 'base'; redesenhar(); }); liga('vHist', () => { VISAO = 'hist'; redesenhar(); });
 }
 
