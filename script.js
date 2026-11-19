@@ -11,6 +11,19 @@ const CONFIG = {
   CHAVE_RESOLUCOES: 'painel-senhas-resolucoes', // nome do espaço onde o navegador guarda as resoluções marcadas
   CHAVE_CATEGORIAS: 'painel-senhas-categorias', // nome do espaço onde o navegador guarda as categorias escolhidas
   CHAVE_TIPOS: 'painel-senhas-tipos',           // nome do espaço onde o navegador guarda os tipos escolhidos à mão
+  CHAVE_CHAMADOS: 'painel-senhas-chamados',     // nome do espaço onde o navegador guarda os números de chamado digitados
+  CHAVE_REGRAS: 'painel-senhas-regras-fornecedor', // nome do espaço onde o navegador guarda as regras "fornecedor -> categoria"
+  // Turnos do filtro do topo, pela hora da DATA/HORA AGENDA. Quando fim é menor que ini, o turno passa da meia-noite.
+  TURNOS: [
+    { nome: '1º turno (06h às 14h)', ini: 6,  fim: 14 },
+    { nome: '2º turno (14h às 22h)', ini: 14, fim: 22 },
+    { nome: '3º turno (22h às 06h)', ini: 22, fim: 6 }
+  ],
+  // Categoria pelo fornecedor: parte do nome do fornecedor : categoria.
+  // Vale para as NFs sem categoria na planilha e sem escolha manual. As regras criadas na aba Categorias somam-se a estas.
+  FORNECEDOR_CATEGORIA: {
+    'AMBEV': 'LÍQUIDA 4 – CERVEJA, CIGARROS'
+  },
   // Categorias do seletor da Base detalhada. Grupo : lista de "CATEGORIA – SUB-CATEGORIA".
   // Para incluir, tirar ou renomear, edite aqui. Uma categoria escolhida e depois renomeada continua aparecendo na NF com o nome antigo.
   CATEGORIAS: {
@@ -63,7 +76,7 @@ const CONFIG = {
   // Se o texto de "DIVERGÊNCIA DOS PEDIDOS" casar com esta expressão (minúsculo, sem acento), a senha é tributária. O resto é comercial.
   REGEX_TRIBUTARIA: '\\b(tribut\\w*|aliquot\\w*|imposto\\w*|icms|ipi|pis|cofins|ncm|cfop|cst|fiscal)\\b',
   MAX_LINHAS_BASE: 300,         // limite de linhas desenhadas na Base detalhada
-  CSV_INICIAL: '',              // cole aqui um CSV para o painel já abrir com seus dados (senão abre com exemplo)
+  CSV_INICIAL: '',              // cole aqui um CSV para o painel já abrir com seus dados (senão abre vazio, esperando a planilha)
   // nome interno : nomes aceitos no cabeçalho (sem acento, minúsculo, sem símbolos: "DATA/HORA AGENDA" vira "data hora agenda")
   COLUNAS: {
     senha:       ['senha'],
@@ -83,6 +96,14 @@ const CONFIG = {
     resolucao:   ['data resolucao','data de resolucao','resolucao','data solucao']
   },
   OBRIGATORIAS: ['senha','agenda','cd','fornecedor','divergencia'],
+  // Arquivo de produtos (Excel ou CSV) da aba Categorias: liga o EAN/PLU dos itens da NF, ou o fornecedor, a uma categoria.
+  // Em cada coluna vale o primeiro nome da lista que existir no arquivo. É preciso ter Categoria e pelo menos PLU, EAN ou Fornecedor.
+  COLUNAS_PRODUTOS: {
+    plu:        ['plu','cod plu','codigo plu','codigo','cod produto','codigo produto','codigo do produto','codigo interno','cod interno','sku'],
+    ean:        ['ean','ean13','gtin','cod barras','codigo de barras','codigo barras'],
+    fornecedor: ['fornecedor','nome fornecedor','fornecedor principal','razao social'],
+    categoria:  ['categoria','categoria produto','sub categoria','subcategoria','secao','departamento','familia']
+  },
   LINHAS_PARA_ACHAR_CABECALHO: 30  // exportações às vezes têm linhas de título antes do cabeçalho
 };
 
@@ -95,19 +116,23 @@ const dataBR = d => d ? d.toLocaleDateString('pt-BR') : '';
 const dataHoraBR = d => d ? d.toLocaleString('pt-BR', {dateStyle:'short', timeStyle:'short'}) : '';
 const NOME_TIPO = {com: 'Comercial', tri: 'Tributária', nd: 'Não informada'}; // nd: DIVERGÊNCIA DOS PEDIDOS vazia
 let DADOS = [];            // senhas da base carregada agora
-let BASE_REAL = false;     // a base carregada veio de um arquivo (e não dos dados de exemplo)?
+let BASE_REAL = false;     // a base carregada veio de um arquivo (e não do CSV_INICIAL)?
 const HIST = new Map();    // histórico do banco de dados: id (senha|NF) -> registro
 let VISAO = 'base';        // o que o painel mostra: 'base' (base carregada) ou 'hist' (histórico completo)
 let TEM_RESOLUCAO = false; // a planilha carregada tem a coluna opcional de resolução?
 const SEM_CATEGORIA = '(sem categoria)';
-const visiveis = () => VISAO === 'hist' && BANCO.ok ? [...HIST.values()] : DADOS; // senhas que o painel está mostrando
+const todas = () => VISAO === 'hist' && BANCO.ok ? [...HIST.values()] : DADOS; // senhas da visão escolhida (base ou histórico)
+const visiveis = () => todas().filter(passaFiltro); // senhas que o painel mostra: as da visão, com os filtros do topo
 const temCategoria = () => visiveis().some(d => d.categoria !== SEM_CATEGORIA); // alguma NF já tem categoria (da planilha ou escolhida)?
 const acharRegistro = id => HIST.get(id) || DADOS.find(x => x.id === id);
 // Cada registro guarda o que veio da planilha (…Arquivo) e o que foi escolhido na tela (…Manual).
 // Esta função calcula o que aparece: o que a planilha diz vale mais que a escolha manual.
 function aplicar(d){
   d.tipo = d.tipoArquivo !== 'nd' ? d.tipoArquivo : (d.tipoManual || 'nd');
-  d.categoria = d.categoriaManual || d.categoriaArquivo || SEM_CATEGORIA;
+  d.categoriaAuto = d.categoriaManual || d.categoriaArquivo ? null : categoriaAutomatica(d); // sugestão (itens da NF, regra ou cadastro)
+  d.categoria = d.categoriaManual || d.categoriaArquivo || d.categoriaAuto?.cat || SEM_CATEGORIA;
+  d.categoriaOrigem = d.categoriaManual ? 'manual' : d.categoriaArquivo ? 'planilha' : d.categoriaAuto?.origem || '';
+  d.chamado = d.chamadoManual || '';
   d.resolucao = d.resolucaoArquivo || d.resolucaoManual || null;
   d.deArquivo = !!d.resolucaoArquivo;
   return d;
@@ -123,12 +148,14 @@ function seletorTipo(d){ // lista de tipo, só para NFs em que a planilha não d
     + ['nd', 'com', 'tri'].map(v => `<option value="${v}"${v === d.tipo ? ' selected' : ''}>${v === 'nd' ? 'Escolha o tipo…' : NOME_TIPO[v]}</option>`).join('')
     + '</select>';
 }
+const ORIGEM_AUTO = { nf: 'pelos itens da NF no cadastro de produtos', regra: 'pela regra do fornecedor', cadastro: 'pelo fornecedor no cadastro de produtos' };
 function seletorCategoria(d){ // caixa de seleção da categoria de uma NF na Base detalhada
   const atual = d.categoria === SEM_CATEGORIA ? '' : d.categoria, opc = o => `<option value="${esc(o)}"${o === atual ? ' selected' : ''}>${esc(o)}</option>`;
-  const naLista = Object.values(CONFIG.CATEGORIAS).some(l => l.includes(atual));
-  return `<select class="sel-cat" data-cat="${esc(d.id)}" aria-label="Categoria da NF ${esc(d.nf)}" title="${esc(atual || 'Escolha a categoria')}">`
+  const naLista = Object.values(CONFIG.CATEGORIAS).some(l => l.includes(atual)), auto = ORIGEM_AUTO[d.categoriaOrigem];
+  const titulo = auto ? 'Sugerida ' + auto + ': ' + atual + '. Escolha na lista para confirmar ou trocar.' : (atual || 'Escolha a categoria');
+  return `<select class="sel-cat${auto ? ' auto' : ''}" data-cat="${esc(d.id)}" aria-label="Categoria da NF ${esc(d.nf)}" title="${esc(titulo)}">`
     + `<option value="">Escolha a categoria…</option>`
-    + (atual && !naLista ? `<optgroup label="Da planilha">${opc(atual)}</optgroup>` : '') // valor da planilha fora da lista
+    + (atual && !naLista ? `<optgroup label="${d.categoriaOrigem === 'planilha' ? 'Da planilha' : 'Outras'}">${opc(atual)}</optgroup>` : '') // valor fora da lista
     + Object.entries(CONFIG.CATEGORIAS).map(([g, l]) => `<optgroup label="${esc(g)}">${l.map(opc).join('')}</optgroup>`).join('')
     + '</select>';
 }
@@ -219,36 +246,58 @@ function lerTabelaHtml(t){ // .xls que na verdade é página HTML (comum em expo
   return [...tab.rows].map(r => [...r.cells].flatMap(c => { // mantém o alinhamento quando há células mescladas
     const v = c.textContent.replace(/\s+/g, ' ').trim(); return [v, ...Array(Math.max(0, (c.colSpan || 1) - 1)).fill('')]; }));
 }
+async function lerPlanilha(f, achar){ // linhas de um CSV, página HTML ou Excel (no Excel, a 1ª aba em que achar() encontra o cabeçalho)
+  const buf = await f.arrayBuffer(), inicio = new TextDecoder('windows-1252').decode(buf.slice(0, 2048)).replace(/^﻿|^ï»¿/, '').trim();
+  if(/\.csv$/i.test(f.name)) return lerCSV(decodificar(buf));
+  if(/^</.test(inicio) && /<(html|table)\b/i.test(inicio) || /\.html?$/i.test(f.name)) return lerTabelaHtml(decodificar(buf));
+  const wb = XLSX.read(buf, {type:'array', cellDates:true});
+  const abas = wb.SheetNames.map(n => XLSX.utils.sheet_to_json(wb.Sheets[n], {header:1, raw:true, defval:''}));
+  return abas.find(r => achar(r)) || abas[0];
+}
 async function carregarArquivo(f){
-  try{
-    const buf = await f.arrayBuffer(), inicio = new TextDecoder('windows-1252').decode(buf.slice(0, 2048)).replace(/^﻿|^ï»¿/, '').trim();
-    let rows;
-    if(/\.csv$/i.test(f.name)) rows = lerCSV(decodificar(buf));
-    else if(/^</.test(inicio) && /<(html|table)\b/i.test(inicio) || /\.html?$/i.test(f.name)) rows = lerTabelaHtml(decodificar(buf));
-    else { // Excel de verdade: usa a primeira aba que tiver o cabeçalho
-      const wb = XLSX.read(buf, {type:'array', cellDates:true});
-      const abas = wb.SheetNames.map(n => XLSX.utils.sheet_to_json(wb.Sheets[n], {header:1, raw:true, defval:''}));
-      rows = abas.find(r => acharCabecalho(r)) || abas[0];
-    }
-    await definirDados(montarRegistros(rows), 'Arquivo: ' + f.name, true);
-  } catch(e){ $('aviso').textContent = 'Não foi possível ler a planilha. ' + e.message; }
+  try{ await definirDados(montarRegistros(await lerPlanilha(f, acharCabecalho)), 'Arquivo: ' + f.name, true); }
+  catch(e){ $('aviso').textContent = 'Não foi possível ler a planilha. ' + e.message; }
 }
 
-/* ===== 2) DADOS DE EXEMPLO (fictícios) ===== */
-function exemplo(){
-  let s = 7; const rnd = () => (s = s * 16807 % 2147483647) / 2147483647;
-  const forn = ['Alfa Distribuidora','Beta Alimentos','Gama Embalagens','Delta Higiene','Ômega Bebidas','Sigma Limpeza','Atlas Papelaria','Nova Frios','Prime Hortifruti','Vértice Eletro','Lume Cosméticos','Terra Grãos'];
-  const cats = Object.values(CONFIG.CATEGORIAS).flat().filter((c, i) => i % 3 === 0); // algumas categorias reais da lista
-  const dc = ['Preço diferente do pedido','Quantidade divergente','Condição de pagamento'], dt = ['ICMS divergente','NCM incorreto','Alíquota de IPI'];
-  const cdsEx = ['CD Guarulhos','CD Campinas','CD Arujá'];
-  const rows = [['Senha','DATA/HORA AGENDA','CD','FORNECEDOR','DIVERGÊNCIA DOS PEDIDOS','Categoria','Data resolução','NF']];
-  for(let i = 0; i < 160; i++){
-    const com = rnd() < .55, ci = Math.floor(rnd() * cats.length), ab = new Date(2026, 0, 1 + Math.floor(rnd() * 300));
-    const dur = Math.round(2 + rnd() * (com ? 14 : 28) * (1 + ci / 8)), re = rnd() < .12 ? '' : new Date(+ab + dur * 864e5);
-    rows.push([String(41000 + i), ab, cdsEx[Math.floor(rnd() * 3)], forn[Math.floor(Math.pow(rnd(), 1.7) * forn.length)],
-      (com ? dc : dt)[Math.floor(rnd() * 3)], cats[ci], re, String(1000 + i)]);
+/* ===== 2) FILTROS DO TOPO (período, turno e categoria) ===== */
+const FILTRO = { periodo: 'tudo', de: null, ate: null, turno: '', cat: '' };
+const diaSoma = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+function lerFiltros(){ // lê os campos do topo e calcula o intervalo de datas (de: inclusive, ate: exclusive)
+  const p = $('fPeriodo').value, hoje = diaSoma(new Date(), 0), amanha = diaSoma(hoje, 1);
+  const deCampo = v => v ? new Date(v + 'T00:00') : null;
+  const faixas = { tudo: [null, null], hoje: [hoje, amanha], ontem: [diaSoma(hoje, -1), hoje], d7: [diaSoma(hoje, -6), amanha], d30: [diaSoma(hoje, -29), amanha],
+    mes: [new Date(hoje.getFullYear(), hoje.getMonth(), 1), amanha], mesant: [new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1), new Date(hoje.getFullYear(), hoje.getMonth(), 1)],
+    custom: [deCampo($('fDe').value), $('fAte').value ? diaSoma(deCampo($('fAte').value), 1) : null] };
+  [FILTRO.de, FILTRO.ate] = faixas[p] || faixas.tudo;
+  Object.assign(FILTRO, { periodo: p, turno: $('fTurno').value, cat: $('fCat').value });
+  $('fDatas').classList.toggle('hidden', p !== 'custom');
+}
+const filtroAtivo = () => !!(FILTRO.de || FILTRO.ate || FILTRO.turno !== '' || FILTRO.cat);
+function noTurno(data, t){ const h = data.getHours(); return t.ini < t.fim ? h >= t.ini && h < t.fim : h >= t.ini || h < t.fim; }
+function passaFiltro(d){ // a senha entra nos filtros do topo? (datas e turno pela DATA/HORA AGENDA)
+  const f = FILTRO, ag = d.agenda;
+  if((f.de || f.ate) && (!ag || (f.de && ag < f.de) || (f.ate && ag >= f.ate))) return false;
+  if(f.turno !== '' && (!ag || !noTurno(ag, CONFIG.TURNOS[+f.turno]))) return false;
+  if(f.cat){
+    if(f.cat === SEM_CATEGORIA) return d.categoria === SEM_CATEGORIA;
+    if(f.cat.startsWith('grupo:')){ const g = f.cat.slice(6); return d.categoria === g || (CONFIG.CATEGORIAS[g] || []).includes(d.categoria); }
+    return d.categoria === f.cat;
   }
-  return rows;
+  return true;
+}
+function desenharFiltros(){ // monta as listas de turno e categoria (mantém o que estava escolhido)
+  const t = $('fTurno'), c = $('fCat'), vt = t.value, vc = c.value, opc = (v, txt) => `<option value="${esc(v)}">${esc(txt)}</option>`;
+  if(!t.options.length) t.innerHTML = opc('', 'Todos os turnos') + CONFIG.TURNOS.map((x, i) => opc(i, x.nome)).join('');
+  const lista = Object.values(CONFIG.CATEGORIAS).flat(), grupos = Object.keys(CONFIG.CATEGORIAS);
+  const outras = [...new Set(todas().map(d => d.categoria))].filter(x => x !== SEM_CATEGORIA && !lista.includes(x) && !grupos.includes(x)).sort();
+  c.innerHTML = opc('', 'Todas as categorias') + opc(SEM_CATEGORIA, 'Sem categoria')
+    + Object.entries(CONFIG.CATEGORIAS).map(([g, l]) => `<optgroup label="${esc(g)}">${opc('grupo:' + g, 'Todo o grupo ' + g)}${l.map(x => opc(x, x)).join('')}</optgroup>`).join('')
+    + (outras.length ? `<optgroup label="Outras">${outras.map(x => opc(x, x)).join('')}</optgroup>` : '');
+  t.value = vt; c.value = [...c.options].some(o => o.value === vc) ? vc : '';
+  lerFiltros();
+  $('fLimpar').classList.toggle('hidden', !filtroAtivo());
+  $('fVisao').innerHTML = !BANCO.ok ? '' : '<span class="visao" role="group" aria-label="O que mostrar">'
+    + [['base', 'Base carregada'], ['hist', 'Histórico completo']].map(([v, txt]) => `<button type="button" data-visao="${v}" class="${VISAO === v ? 'on' : ''}">${txt}</button>`).join('') + '</span>';
 }
 
 /* ===== 3) CÁLCULOS ===== */
@@ -313,10 +362,105 @@ function numerosDaNf(texto){ // "1602192 a 195" -> 1602192..1602195; "1602192/19
 function notasDaSenha(d){ // liga a senha à(s) nota(s) pelo(s) número(s) da NF; se o número se repete, desempata pelo fornecedor
   return numerosDaNf(d.nf).flatMap(num => { const c = NOTAS_POR_NF.get(num) || []; return c.length <= 1 ? c : c.filter(n => mesmoFornecedor(n.emitente, d.fornecedor)); });
 }
+
+/* ===== 3c) CATEGORIA AUTOMÁTICA (cadastro de produtos e regras por fornecedor) =====
+   Ordem: 1) itens das NFs ligadas à senha (EAN ou PLU no cadastro de produtos); 2) regra do fornecedor; 3) fornecedor no cadastro.
+   A categoria da planilha e a escolhida na tela sempre valem mais que a sugerida. */
+let PRODUTOS = { nome: '', total: 0, porPlu: new Map(), porEan: new Map(), porForn: new Map() };
+let REGRAS = lerSalvo(CONFIG.CHAVE_REGRAS); if(!Array.isArray(REGRAS)) REGRAS = []; // [{ forn, cat, origem: 'tela'|'aprendida', alterado, removida }]
+const CACHE_FORN = new Map(); // fornecedor -> categoria mais comum no cadastro (evita refazer a busca a cada desenho)
+const codigo = v => { const t = String(v ?? '').trim().toUpperCase(); return /^\d+$/.test(t) ? t.replace(/^0+(?=\d)/, '') : t; }; // compara códigos sem zeros à esquerda
+const maisFrequente = m => [...m].sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+function mapearCategoria(t){ // texto do cadastro -> categoria da lista (pelo nome completo ou só pelo começo, ex.: "LIQUIDA 4"); senão, o próprio texto
+  const n = norm(t); if(!n) return '';
+  for(const [g, l] of Object.entries(CONFIG.CATEGORIAS)){
+    if(n === norm(g)) return g;
+    for(const c of l) if(n === norm(c) || n === norm(c.split('–')[0])) return c;
+  }
+  return String(t).trim();
+}
+function acharCabecalhoProdutos(rows){ // mesma ideia de acharCabecalho, mas cada coluna pega o primeiro nome da lista que existir
+  for(let i = 0; i < Math.min(rows.length, CONFIG.LINHAS_PARA_ACHAR_CABECALHO); i++){
+    const cab = rows[i].map(norm), idx = {};
+    for(const [k, nomes] of Object.entries(CONFIG.COLUNAS_PRODUTOS)) idx[k] = nomes.map(norm).map(x => cab.indexOf(x)).find(x => x >= 0) ?? -1;
+    if(idx.categoria >= 0 && (idx.plu >= 0 || idx.ean >= 0 || idx.fornecedor >= 0)) return { linha: i, idx };
+  }
+  return null;
+}
+function indexarProdutos(nome, lista){ // lista: [plu, ean, fornecedor, categoria]
+  const porPlu = new Map(), porEan = new Map(), porForn = new Map();
+  for(const [plu, ean, fo, cat] of lista){ if(!cat) continue;
+    if(plu) porPlu.set(plu, cat); if(ean) porEan.set(ean, cat);
+    if(fo){ const k = norm(fo); if(!porForn.has(k)) porForn.set(k, new Map()); const m = porForn.get(k); m.set(cat, (m.get(cat) || 0) + 1); } }
+  PRODUTOS = { nome, total: lista.length, porPlu, porEan, porForn }; CACHE_FORN.clear();
+}
+async function carregarProdutos(f){
+  try{
+    const rows = await lerPlanilha(f, acharCabecalhoProdutos), c = acharCabecalhoProdutos(rows);
+    if(!c) throw new Error('Não encontrei as colunas. O arquivo precisa de uma coluna Categoria e de pelo menos uma destas: PLU (ou Código), EAN ou Fornecedor.');
+    const g = (r, k) => c.idx[k] < 0 ? '' : r[c.idx[k]];
+    const lista = rows.slice(c.linha + 1).map(r => [codigo(g(r, 'plu')), codigo(g(r, 'ean')), String(g(r, 'fornecedor') ?? '').trim(), mapearCategoria(g(r, 'categoria'))])
+      .filter(x => x[3] && (x[0] || x[1] || x[2]));
+    if(!lista.length) throw new Error('Nenhuma linha com categoria.');
+    indexarProdutos(f.name, lista); await idbGravar('produtos', { nome: f.name, lista }); $('erroProdutos').textContent = '';
+    redesenhar();
+  } catch(e){ $('erroProdutos').textContent = 'Não foi possível ler o arquivo de produtos. ' + e.message; }
+}
+async function removerProdutos(){ indexarProdutos('', []); await idbGravar('produtos', null); redesenhar(); }
+function regraDoFornecedor(f){ // regra cujo texto está contido no nome do fornecedor; a mais específica (texto mais longo) ganha
+  const n = norm(f); if(!n) return null; let melhor = null;
+  const lista = REGRAS.filter(r => !r.removida).concat(Object.entries(CONFIG.FORNECEDOR_CATEGORIA).map(([forn, cat]) => ({ forn, cat, origem: 'config' })));
+  for(const r of lista){ const k = norm(r.forn); if(k && n.includes(k) && (!melhor || k.length > norm(melhor.forn).length)) melhor = r; }
+  return melhor;
+}
+function categoriaDoCadastro(f){ // categoria mais comum dos produtos do fornecedor no cadastro
+  const n = norm(f); if(!n || !PRODUTOS.porForn.size) return '';
+  if(!CACHE_FORN.has(n)){ let m = PRODUTOS.porForn.get(n);
+    if(!m){ const ini = s => s.split(' ').slice(0, 2).join(' '); for(const [k, v] of PRODUTOS.porForn) if(k.includes(n) || n.includes(k) || ini(k) === ini(n)){ m = v; break; } }
+    CACHE_FORN.set(n, m ? maisFrequente(m) : ''); }
+  return CACHE_FORN.get(n);
+}
+function categoriaAutomatica(d){
+  if(PRODUTOS.total && NOTAS.length){ const cont = new Map();
+    for(const n of notasDaSenha(d)) for(const i of n.itens){
+      const c = PRODUTOS.porEan.get(codigo(i.ean)) || PRODUTOS.porPlu.get(codigo(i.cod)); if(c) cont.set(c, (cont.get(c) || 0) + 1); }
+    const c = maisFrequente(cont); if(c) return { cat: c, origem: 'nf' }; }
+  const r = regraDoFornecedor(d.fornecedor); if(r) return { cat: r.cat, origem: 'regra' };
+  const c = categoriaDoCadastro(d.fornecedor); return c ? { cat: c, origem: 'cadastro' } : null;
+}
+function recalcularCategorias(){ for(const d of DADOS) aplicar(d); for(const d of HIST.values()) aplicar(d); }
+function salvarRegra(forn, cat, origem){ // cria ou troca a regra deste fornecedor (cat vazio = remove)
+  const k = norm(forn); if(!k) return; let r = REGRAS.find(x => norm(x.forn) === k);
+  if(!r){ if(!cat) return; r = { forn: String(forn).trim() }; REGRAS.push(r); }
+  Object.assign(r, { cat: cat || r.cat, origem: cat ? origem : r.origem, removida: !cat, alterado: new Date().toISOString() });
+  gravarSalvo(REGRAS, CONFIG.CHAVE_REGRAS); if(BANCO.ok) salvarBanco();
+}
+function juntarRegras(lista){ // regras vindas do banco: em cada fornecedor vale a alteração mais recente
+  let mudou = 0;
+  for(const r of Array.isArray(lista) ? lista : []){ const h = REGRAS.find(x => norm(x.forn) === norm(r.forn));
+    if(!h){ REGRAS.push({ ...r }); mudou++; } else if((r.alterado || '') > (h.alterado || '')){ Object.assign(h, r); mudou++; } }
+  if(mudou) gravarSalvo(REGRAS, CONFIG.CHAVE_REGRAS);
+  return mudou;
+}
+function desenharCategorias(){ // aba Categorias: resumo do cadastro, regras e quantas NFs receberam categoria sugerida
+  const vs = todas(), conta = o => vs.filter(d => d.categoriaOrigem === o).length;
+  $('resumoProdutos').innerHTML = PRODUTOS.total ? `<b>${esc(PRODUTOS.nome)}</b>: ${PRODUTOS.total} produtos (${PRODUTOS.porEan.size} com EAN, ${PRODUTOS.porPlu.size} com PLU), ${PRODUTOS.porForn.size} fornecedores.` : 'Nenhum arquivo de produtos carregado.';
+  $('btnTirarProdutos').classList.toggle('hidden', !PRODUTOS.total);
+  $('resumoAuto').textContent = vs.length ? `Categoria sugerida em ${conta('nf') + conta('regra') + conta('cadastro')} de ${vs.length} NFs: ${conta('nf')} pelos itens da NF, ${conta('regra')} pela regra do fornecedor, ${conta('cadastro')} pelo cadastro. ${vs.filter(d => d.categoria === SEM_CATEGORIA).length} continuam sem categoria.` : '';
+  const sel = $('regraCat'); if(!sel.options.length) sel.innerHTML = '<option value="">Escolha a categoria…</option>' + Object.entries(CONFIG.CATEGORIAS).map(([g, l]) => `<optgroup label="${esc(g)}">${l.map(c => `<option>${esc(c)}</option>`).join('')}</optgroup>`).join('');
+  $('listaFornecedores').innerHTML = [...new Set(vs.map(d => d.fornecedor))].sort().map(f => `<option value="${esc(f)}">`).join('');
+  const nomeOrigem = { config: 'Fixa (CONFIG)', tela: 'Criada na tela', aprendida: 'Aprendida de uma escolha' };
+  const regras = REGRAS.filter(r => !r.removida).concat(Object.entries(CONFIG.FORNECEDOR_CATEGORIA).map(([forn, cat]) => ({ forn, cat, origem: 'config' })));
+  $('corpoRegras').innerHTML = regras.length ? regras.map(r => `<tr><td>${esc(r.forn)}</td><td>${esc(r.cat)}</td><td><span class="vazio">${nomeOrigem[r.origem] || ''}</span></td>`
+    + `<td>${vs.filter(d => d.categoriaOrigem === 'regra' && norm(regraDoFornecedor(d.fornecedor)?.forn) === norm(r.forn)).length}</td>`
+    + `<td>${r.origem === 'config' ? '' : `<button type="button" class="link" data-tirar-regra="${esc(r.forn)}">Remover</button>`}</td></tr>`).join('')
+    : '<tr><td colspan="5" class="vazio">Nenhuma regra ainda.</td></tr>';
+}
+
 async function carregarXmls(files){
   let erros = 0;
   for(const f of files){ try{ const n = lerXmlNfe(await f.text()); NOTAS = NOTAS.filter(x => !n.chave || x.chave !== n.chave).concat(n); } catch(e){ erros++; } }
-  indexarNotas(); desenharNotas(); desenharBase();
+  indexarNotas(); redesenhar(); // os itens das notas podem trazer a categoria
   if(erros) $('resumoNotas').textContent += ' ' + erros + ' arquivo(s) não são XML de NF-e e foram ignorados.';
 }
 function desenharNotas(){
@@ -332,7 +476,7 @@ function desenharNotas(){
 const BANCO = { handle: null, ok: false, nome: '', lido: 0, atualizado: null, timer: null };
 const temSuporteBanco = () => 'showOpenFilePicker' in window;
 const CAMPOS_ARQUIVO = ['senha','nf','cd','status','fornecedor','categoriaArquivo','tipoArquivo','tipoPorColuna','agenda','inicio','resolucaoArquivo','descricao'];
-const CAMPOS_MANUAIS = ['tipoManual','categoriaManual','resolucaoManual'];
+const CAMPOS_MANUAIS = ['tipoManual','categoriaManual','resolucaoManual','chamadoManual'];
 const CAMPOS_DATA = ['agenda','inicio','resolucaoArquivo','resolucaoManual','primeiraVez','ultimaVez'];
 // Guarda o "endereço" do arquivo escolhido no navegador, para reconectar sem procurar de novo
 function idb(modo, fn){ return new Promise((ok, erro) => { const r = indexedDB.open('painel-senhas', 1);
@@ -354,6 +498,8 @@ async function lerArquivoBanco(){ // lê o arquivo e devolve a lista de registro
   const t = (await f.text()).trim(); if(!t) return [];
   const j = JSON.parse(t); if(!Array.isArray(j.registros)) throw new Error('o arquivo não é um banco deste painel');
   BANCO.atualizado = j.atualizado ? new Date(j.atualizado) : null;
+  BANCO.regrasMudaram = juntarRegras(j.regras); // regras "fornecedor -> categoria" do time
+  if(BANCO.regrasMudaram) CACHE_FORN.clear();
   return j.registros.map(deJson);
 }
 function juntarDoArquivo(regs){ // junta o que está no arquivo com o que está na tela: em cada senha vale a alteração mais recente
@@ -388,7 +534,7 @@ async function gravarBanco(){ // relê o arquivo (alguém pode ter mexido), junt
     juntarDoArquivo(await lerArquivoBanco());
     BANCO.atualizado = new Date();
     const w = await BANCO.handle.createWritable();
-    await w.write(JSON.stringify({ versao: 1, atualizado: BANCO.atualizado.toISOString(), registros: [...HIST.values()].map(paraJson) }, null, 1));
+    await w.write(JSON.stringify({ versao: 1, atualizado: BANCO.atualizado.toISOString(), registros: [...HIST.values()].map(paraJson), regras: REGRAS }, null, 1));
     await w.close(); BANCO.lido = (await BANCO.handle.getFile()).lastModified;
     desenharBanco();
   } catch(e){ falhaBanco(e); }
@@ -408,7 +554,7 @@ function falhaBanco(e){ BANCO.ok = false; desenharBanco('Não foi possível usar
 function vigiarBanco(){ // a cada minuto, confere se alguém do time gravou algo novo no arquivo
   clearInterval(BANCO.timer);
   BANCO.timer = setInterval(async () => { if(!BANCO.ok) return;
-    try{ const f = await BANCO.handle.getFile(); if(f.lastModified !== BANCO.lido && juntarDoArquivo(await lerArquivoBanco())) redesenhar(); }
+    try{ const f = await BANCO.handle.getFile(); if(f.lastModified !== BANCO.lido && (juntarDoArquivo(await lerArquivoBanco()) + BANCO.regrasMudaram)) redesenhar(); }
     catch(e){ falhaBanco(e); } }, 60000);
 }
 async function criarBanco(){
@@ -430,41 +576,35 @@ async function iniciarBanco(){ // ao abrir a página: tenta voltar ao arquivo us
   try{ if(await h.queryPermission({ mode: 'readwrite' }) === 'granted') return conectarBanco(h); } catch(e){}
   desenharBanco(); // sem permissão ainda: mostra o botão Reconectar
 }
-const CHAVE_BANCO_OCULTO = 'painel-senhas-banco-oculto'; // lembra se a faixa do banco conectado foi escondida
-let bancoOculto = (() => { try{ return localStorage.getItem(CHAVE_BANCO_OCULTO) === '1'; }catch(e){ return false; } })();
-function ocultarBanco(v){ bancoOculto = v; try{ localStorage.setItem(CHAVE_BANCO_OCULTO, v ? '1' : '0'); }catch(e){} desenharBanco(); }
-function desenharBanco(msg){
-  const el = $('banco'), btn = (id, t, cls = '', tit = '') => `<button type="button" id="${id}" class="${cls}"${tit ? ` title="${tit}" aria-label="${tit}"` : ''}>${t}</button>`;
-  let html;
-  el.classList.toggle('mini', !!(BANCO.ok && bancoOculto && !msg));
-  if(BANCO.ok && bancoOculto && !msg){ // faixa escondida: fica só um botão pequeno para mostrar de novo
-    el.innerHTML = btn('bMostrar', '<span class="ponto on"></span>Banco conectado', 'link', 'Mostrar a faixa do banco de dados');
-    $('bMostrar').onclick = () => ocultarBanco(false); return;
-  }
-  if(!temSuporteBanco()) html = '<span class="ponto off"></span><span><b>Banco de dados indisponível neste navegador.</b> Abra o painel no Edge ou no Chrome para guardar o histórico.</span>';
+function desenharBanco(msg){ // indicador pequeno no topo; clicar abre os detalhes e os botões
+  const el = $('banco'), aberto = el.querySelector('details')?.open, btn = (id, t, cls = '') => `<button type="button" id="${id}" class="${cls}">${t}</button>`;
+  let estado, rotulo, corpo;
+  if(!temSuporteBanco()){ estado = 'off'; rotulo = 'Sem banco'; corpo = '<p><b>Banco de dados indisponível neste navegador.</b> Abra o painel no Edge ou no Chrome para guardar o histórico.</p>'; }
   else if(BANCO.ok){
     const n = HIST.size, ab = [...HIST.values()].filter(d => !d.resolucao).length;
-    html = `<span class="ponto on"></span><span><b>Banco conectado:</b> ${esc(BANCO.nome)} · ${n} ${n === 1 ? 'senha' : 'senhas'} no histórico (${ab} em aberto)`
-      + (BANCO.atualizado ? ' · gravado ' + dataHoraBR(BANCO.atualizado) : '') + '</span>'
-      + `<span class="visao" role="group" aria-label="O que mostrar">${btn('vBase', 'Base carregada', VISAO === 'base' ? 'on' : '')}${btn('vHist', 'Histórico completo', VISAO === 'hist' ? 'on' : '')}</span>`
-      + btn('bTrocar', 'Trocar arquivo', 'link') + btn('bOcultar', '✕', 'link fechar', 'Esconder a faixa do banco de dados');
-  } else if(BANCO.handle) html = `<span class="ponto off"></span><span><b>Banco:</b> ${esc(BANCO.nome)} precisa da sua permissão para ser usado nesta sessão.</span>` + btn('bRecon', 'Reconectar', 'primario') + btn('bAbrir', 'Abrir outro', 'link');
-  else html = '<span class="ponto off"></span><span><b>Banco de dados desconectado:</b> o histórico não está sendo salvo. Crie o banco numa pasta compartilhada do OneDrive ou abra o que o time já usa.</span>'
-    + btn('bCriar', 'Criar banco', 'primario') + btn('bAbrir', 'Abrir banco existente');
-  el.innerHTML = html + (msg ? `<span class="erro">${esc(msg)}</span>` : '');
+    estado = 'on'; rotulo = 'Banco conectado';
+    corpo = `<p><b>${esc(BANCO.nome)}</b><br>${n} ${n === 1 ? 'senha' : 'senhas'} no histórico, ${ab} em aberto.` + (BANCO.atualizado ? `<br><span class="vazio">Gravado ${dataHoraBR(BANCO.atualizado)}</span>` : '') + '</p>'
+      + '<div class="pop-acoes">' + btn('bTrocar', 'Trocar arquivo') + '</div>';
+  } else if(BANCO.handle){ estado = 'espera'; rotulo = 'Reconectar banco';
+    corpo = `<p><b>${esc(BANCO.nome)}</b> precisa da sua permissão para ser usado nesta sessão.</p><div class="pop-acoes">${btn('bRecon', 'Reconectar', 'primario')}${btn('bAbrir', 'Abrir outro')}</div>`; }
+  else { estado = 'off'; rotulo = 'Banco desconectado';
+    corpo = '<p>O histórico não está sendo salvo. Crie o banco numa pasta compartilhada do OneDrive ou abra o que o time já usa.</p><div class="pop-acoes">' + btn('bCriar', 'Criar banco', 'primario') + btn('bAbrir', 'Abrir banco existente') + '</div>'; }
+  if(msg) estado = 'erro';
+  el.innerHTML = `<details class="banco ${estado}"${aberto || msg ? ' open' : ''}><summary title="Banco de dados (histórico)"><span class="ponto"></span>${rotulo}</summary>`
+    + `<div class="banco-pop">${corpo}${msg ? `<p class="erro">${esc(msg)}</p>` : ''}</div></details>`;
   const liga = (id, fn) => { const b = $(id); if(b) b.onclick = fn; };
-  liga('bCriar', criarBanco); liga('bAbrir', abrirBanco); liga('bTrocar', abrirBanco); liga('bRecon', reconectarBanco); liga('bOcultar', () => ocultarBanco(true));
-  liga('vBase', () => { VISAO = 'base'; redesenhar(); }); liga('vHist', () => { VISAO = 'hist'; redesenhar(); });
+  liga('bCriar', criarBanco); liga('bAbrir', abrirBanco); liga('bTrocar', abrirBanco); liga('bRecon', reconectarBanco);
 }
 
 /* ===== 4) DESENHO DA TELA ===== */
-function redesenhar(){ desenharBanco(); desenharPainel(); desenharBase(); desenharNotas(); }
+function redesenhar(){ recalcularCategorias(); desenharBanco(); desenharFiltros(); desenharPainel(); desenharBase(); desenharNotas(); desenharCategorias(); }
 function linha(rotulo, valor, max, texto, cls, extra){ // uma barra de ranking
   return `<div class="row"><div class="top"><span title="${esc(rotulo)}">${esc(rotulo)}</span><b>${texto}</b></div>
     <div class="tr"><div class="fl ${cls}" style="width:${max ? valor / max * 100 : 0}%"></div></div>${extra || ''}</div>`;
 }
 function desenharPainel(){
   const dv = visiveis(), abertas = dv.filter(d => horas(d) == null).length, res = dv.filter(d => horas(d) != null);
+  $('estadoVazio').classList.toggle('hidden', todas().length > 0);
   $('avisoCat').textContent = temCategoria() ? '' : 'Nenhuma NF tem categoria ainda. Escolha a categoria de cada NF na Base detalhada. Os rankings por fornecedor já funcionam.';
   const med = res.length ? res.reduce((a,d) => a + horas(d), 0) / res.length : 0;
   $('kpis').innerHTML = [[dv.length,'NFs divergentes'],[dv.filter(d => d.tipo === 'com').length,'comerciais'],
@@ -486,7 +626,7 @@ function desenharPainel(){
     return `<div class="row"><div class="top"><span title="${esc(x.nome)}">${esc(x.nome)}</span><span class="dir">${partes}<b>${x.total}</b></span></div>${barra}${chips}</div>`;
   }).join('') : '<p class="vazio">Sem dados para este filtro.</p>';
   const datas = dv.map(d => d.agenda).filter(Boolean).sort((a, b) => a - b);
-  const escopo = (VISAO === 'hist' && BANCO.ok ? '<b>Histórico completo</b>' : '<b>Base carregada</b>') + `: ${dv.length} ${dv.length === 1 ? 'senha' : 'senhas'}`
+  const escopo = (VISAO === 'hist' && BANCO.ok ? '<b>Histórico completo</b>' : '<b>Base carregada</b>') + (filtroAtivo() ? ' (com filtros)' : '') + `: ${dv.length} ${dv.length === 1 ? 'senha' : 'senhas'}`
     + (datas.length ? (dataBR(datas[0]) === dataBR(datas.at(-1)) ? ' de ' + dataBR(datas[0]) : ` de ${dataBR(datas[0])} a ${dataBR(datas.at(-1))}`) : '') + '.';
   $('pForn').insertAdjacentHTML('afterbegin', `<p class="vazio legenda">${escopo}` + (tipo === 'todos' ? ' Azul: comerciais. Âmbar: tributárias.' + (dv.some(d => d.tipo === 'nd') ? ' Cinza: sem tipo.' : '') : '') + '</p>');
 
@@ -499,28 +639,29 @@ function desenharPainel(){
 }
 function desenharBase(){
   const q = norm($('busca').value), agora = new Date();
-  const l = visiveis().filter(d => !q || norm([d.senha, d.nf, d.fornecedor, d.categoria, d.descricao, NOME_TIPO[d.tipo]].join(' ')).includes(q));
-  $('contaBase').textContent = l.length + ' de ' + visiveis().length + ' NFs divergentes' + (VISAO === 'hist' && BANCO.ok ? ' (histórico completo)' : '') + (l.length > CONFIG.MAX_LINHAS_BASE ? ' (mostrando ' + CONFIG.MAX_LINHAS_BASE + ')' : '');
+  const vs = visiveis(), l = vs.filter(d => !q || norm([d.senha, d.nf, d.fornecedor, d.categoria, d.descricao, d.chamado, NOME_TIPO[d.tipo]].join(' ')).includes(q));
+  $('contaBase').textContent = l.length + ' de ' + vs.length + ' NFs divergentes' + (VISAO === 'hist' && BANCO.ok ? ' (histórico completo)' : '') + (filtroAtivo() ? ' (com filtros)' : '') + (l.length > CONFIG.MAX_LINHAS_BASE ? ' (mostrando ' + CONFIG.MAX_LINHAS_BASE + ')' : '');
   $('corpo').innerHTML = l.slice(0, CONFIG.MAX_LINHAS_BASE).map(d => { const h = horas(d);
     const tempo = h != null ? hh(h) : (inicioDe(d) ? '<span class="vazio">' + hh(Math.max(0, (agora - inicioDe(d)) / 36e5)) + ' em aberto</span>' : '');
     return `<tr class="${d.resolucao ? '' : 'aberta'}"><td><input type="checkbox" data-id="${esc(d.id)}" ${d.resolucao ? 'checked' : ''} ${d.deArquivo ? 'disabled' : ''} aria-label="Marcar como resolvido"></td>
-    <td>${esc(d.senha)}</td><td>${esc(d.nf)}</td><td>${d.tipoArquivo === 'nd' ? seletorTipo(d) : `<span class="tag ${d.tipo}" title="${d.tipoPorColuna ? 'Definido pelas colunas INI/FIM DIV (divergência sem texto)' : d.tipo === 'nd' ? 'DIVERGÊNCIA DOS PEDIDOS e colunas INI/FIM DIV vazias' : 'Definido pelo texto de DIVERGÊNCIA DOS PEDIDOS'}">${NOME_TIPO[d.tipo]}${d.tipoPorColuna ? '*' : ''}</span>`}</td>
+    <td>${esc(d.senha)}</td><td>${esc(d.nf)}</td><td>${d.tipoArquivo === 'nd' ? seletorTipo(d) : `<span class="tag ${d.tipo}" title="${esc((d.descricao ? 'Divergência: ' + d.descricao + '\n' : '') + (d.tipoPorColuna ? 'Definido pelas colunas INI/FIM DIV (divergência sem texto)' : d.tipo === 'nd' ? 'DIVERGÊNCIA DOS PEDIDOS e colunas INI/FIM DIV vazias' : 'Definido pelo texto de DIVERGÊNCIA DOS PEDIDOS'))}">${NOME_TIPO[d.tipo]}${d.tipoPorColuna ? '*' : ''}</span>`}</td>
     <td>${esc(d.fornecedor)}</td><td>${seletorCategoria(d)}</td><td>${dataHoraBR(d.agenda)}</td><td>${d.resolucao ? dataHoraBR(d.resolucao) : '<span class="selo-aberta">Aberta</span>'}</td>
-    <td>${tempo}</td><td>${esc(d.descricao)}</td></tr>`; }).join('');
+    <td>${tempo}</td><td><input type="text" class="in-chamado" inputmode="numeric" data-chamado="${esc(d.id)}" value="${esc(d.chamado)}" placeholder="Nº do chamado" aria-label="Número do chamado da NF ${esc(d.nf)}"></td></tr>`; }).join('');
 }
 function aplicarSalvosLocais(d){ // devolve o que este navegador já tinha marcado (vale também sem banco de dados)
-  const res = lerSalvo(), cats = lerSalvo(CONFIG.CHAVE_CATEGORIAS), tps = lerSalvo(CONFIG.CHAVE_TIPOS);
+  const res = lerSalvo(), cats = lerSalvo(CONFIG.CHAVE_CATEGORIAS), tps = lerSalvo(CONFIG.CHAVE_TIPOS), chs = lerSalvo(CONFIG.CHAVE_CHAMADOS);
+  if(chs[d.id]) d.chamadoManual = chs[d.id];
   if(res[d.id]) d.resolucaoManual = new Date(res[d.id]);
   if(cats[d.id]) d.categoriaManual = cats[d.id];
   if(NOME_TIPO[tps[d.id]] && tps[d.id] !== 'nd') d.tipoManual = tps[d.id];
   return aplicar(d);
 }
-async function definirDados(registros, origem, real = false){ // real: veio de um arquivo (entra no banco); exemplo não entra
+async function definirDados(registros, origem, real = false){ // real: veio de um arquivo (entra no banco); o CSV_INICIAL não entra
   registros.forEach(aplicarSalvosLocais);
   DADOS = registros; BASE_REAL = real;
   let noBanco = '';
   if(real && BANCO.ok){ const r = juntarBase(DADOS, registros.outras); noBanco = ` · banco: ${r.novas} ${r.novas === 1 ? 'nova' : 'novas'}, ${r.atualizadas} ${r.atualizadas === 1 ? 'atualizada' : 'atualizadas'}`; }
-  if(!real) VISAO = 'base'; // dados de exemplo nunca se misturam com o histórico
+  if(!real) VISAO = 'base'; // dados embutidos nunca se misturam com o histórico
   const rep = registros.length - new Set(registros.map(d => d.id)).size; // mesma senha e mesma NF repetidas
   $('aviso').textContent = registros.semDivergentes || (origem + ' · CD ' + CONFIG.CD.join(' / ') + ' · ' + registros.length + ' NFs divergentes'
     + (rep ? ' · atenção: ' + rep + ' linhas repetem uma senha e NF já listadas' : '')) + noBanco;
@@ -534,11 +675,16 @@ function alterou(d){ // depois de uma escolha na tela: recalcula, guarda no banc
 /* ===== 5) EVENTOS E INÍCIO ===== */
 document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === b));
-  ['painel','base','notas','ajuda'].forEach(a => $('aba-' + a).classList.toggle('hidden', a !== b.dataset.aba));
+  ['painel','base','notas','categorias','ajuda'].forEach(a => $('aba-' + a).classList.toggle('hidden', a !== b.dataset.aba));
+  $('filtros').classList.toggle('hidden', !['painel','base'].includes(b.dataset.aba)); // filtros só no Painel e na Base detalhada
 });
 $('btnArq').onclick = () => $('arq').click();
 $('arq').onchange = e => e.target.files[0] && carregarArquivo(e.target.files[0]);
-$('btnDemo').onclick = () => definirDados(montarRegistros(exemplo()), 'Dados de exemplo (fictícios, não entram no banco)');
+$('btnVazio').onclick = () => $('arq').click();
+['fPeriodo','fDe','fAte','fTurno','fCat'].forEach(id => $(id).onchange = () => { lerFiltros(); redesenhar(); });
+$('fLimpar').onclick = () => { $('fPeriodo').value = 'tudo'; $('fDe').value = $('fAte').value = $('fTurno').value = $('fCat').value = ''; lerFiltros(); redesenhar(); };
+$('fVisao').onclick = e => { const v = e.target.dataset?.visao; if(v){ VISAO = v; redesenhar(); } };
+document.addEventListener('click', e => { const b = $('banco').querySelector('details[open]'); if(b && !b.contains(e.target)) b.open = false; }); // fecha o quadro do banco ao clicar fora
 $('filtroTipo').onchange = desenharPainel;
 $('corpo').onchange = e => {
   const c = e.target;
@@ -552,7 +698,17 @@ $('corpo').onchange = e => {
     const d = acharRegistro(c.dataset.cat); if(!d) return;
     const sv = lerSalvo(CONFIG.CHAVE_CATEGORIAS);
     d.categoriaManual = c.value || null; if(c.value) sv[d.id] = c.value; else delete sv[d.id];
-    gravarSalvo(sv, CONFIG.CHAVE_CATEGORIAS); c.title = c.value || 'Escolha a categoria'; alterou(d); return; // não redesenha a tabela para não perder a posição
+    gravarSalvo(sv, CONFIG.CHAVE_CATEGORIAS); c.title = c.value || 'Escolha a categoria'; c.classList.remove('auto');
+    if(c.value && !regraDoFornecedor(d.fornecedor)){ // 1ª escolha para este fornecedor: vira regra e sugere a mesma categoria nas outras NFs dele
+      salvarRegra(d.fornecedor, c.value, 'aprendida'); const w = c.closest('.tab-wrap'), y = w.scrollTop;
+      alterou(d); redesenhar(); w.scrollTop = y; return; }
+    alterou(d); return; // não redesenha a tabela para não perder a posição
+  }
+  if('chamado' in c.dataset){ // número do chamado: grava o que foi digitado (navegador e banco)
+    const d = acharRegistro(c.dataset.chamado); if(!d) return;
+    const sv = lerSalvo(CONFIG.CHAVE_CHAMADOS), v = c.value.trim();
+    d.chamadoManual = v || null; if(v) sv[d.id] = v; else delete sv[d.id];
+    gravarSalvo(sv, CONFIG.CHAVE_CHAMADOS); c.value = v; alterou(d); return;
   }
   // caixa "Resolvido": grava a data e a hora do clique
   const d = c.dataset.id && acharRegistro(c.dataset.id); if(!d) return;
@@ -560,7 +716,14 @@ $('corpo').onchange = e => {
   if(c.checked){ d.resolucaoManual = new Date(); sv[d.id] = d.resolucaoManual.toISOString(); } else { d.resolucaoManual = null; delete sv[d.id]; }
   gravarSalvo(sv); alterou(d); desenharBase();
 };
+$('corpo').onkeydown = e => { if(e.key === 'Enter' && e.target.classList.contains('in-chamado')) e.target.blur(); }; // Enter confirma o chamado
 $('busca').oninput = desenharBase;
+$('btnProdutos').onclick = () => $('arqProdutos').click();
+$('arqProdutos').onchange = e => { if(e.target.files[0]) carregarProdutos(e.target.files[0]); e.target.value = ''; };
+$('btnTirarProdutos').onclick = removerProdutos;
+$('formRegra').onsubmit = e => { e.preventDefault(); const f = $('regraForn').value.trim(), c = $('regraCat').value;
+  if(!f || !c) return; salvarRegra(f, c, 'tela'); $('regraForn').value = ''; $('regraCat').value = ''; redesenhar(); };
+$('corpoRegras').onclick = e => { const f = e.target.dataset?.tirarRegra; if(f != null){ salvarRegra(f, '', 'tela'); redesenhar(); } };
 $('btnXml').onclick = () => $('arqXml').click();
 $('arqXml').onchange = e => carregarXmls([...e.target.files]);
 $('chave').oninput = e => {
@@ -569,7 +732,7 @@ $('chave').oninput = e => {
     : 'UF ' + r.uf + ', emissão ' + r.emissao + ', CNPJ do fornecedor ' + r.cnpj + ', modelo ' + r.modelo + ', série ' + r.serie + ', NF ' + r.nf + '. ' + (r.valida ? 'Dígito verificador confere.' : 'Dígito verificador não confere: confira a digitação.');
 };
 try{
-  CONFIG.CSV_INICIAL.trim() ? definirDados(montarRegistros(lerCSV(CONFIG.CSV_INICIAL)), 'Dados embutidos na página')
-                            : definirDados(montarRegistros(exemplo()), 'Dados de exemplo (fictícios). Carregue sua planilha para ver os números reais');
+  if(CONFIG.CSV_INICIAL.trim()) definirDados(montarRegistros(lerCSV(CONFIG.CSV_INICIAL)), 'Dados embutidos na página'); else redesenhar();
 } catch(e){ $('aviso').textContent = e.message; }
+idbLer('produtos').then(p => { if(p?.lista?.length){ indexarProdutos(p.nome, p.lista); redesenhar(); } }); // volta o cadastro de produtos usado da última vez
 iniciarBanco(); // volta ao banco usado da última vez (se o navegador ainda tiver permissão)
