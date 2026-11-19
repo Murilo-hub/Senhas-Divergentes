@@ -641,6 +641,15 @@ summary:focus-visible {
   margin-bottom: 0; /* o espaço entre painéis vem do gap da grade */
 }
 
+/* Aba Categorias: texto pequeno e fornecedores não encontrados no arquivo de produtos */
+.mini {
+  font-size: 12px;
+}
+
+tr.sem-lig td {
+  background: var(--ab);
+}
+
 /* Formulário de regra (aba Categorias) */
 .form-regra {
   justify-content: flex-start;
