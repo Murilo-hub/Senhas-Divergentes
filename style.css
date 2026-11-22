@@ -431,6 +431,19 @@ summary:focus-visible {
   gap: 8px;
 }
 
+/* Login do banco */
+.form-login {
+  display: grid;
+  gap: 8px;
+}
+
+.form-login input {
+  box-sizing: border-box;
+  width: 100%;
+  font-size: 13.5px;
+  padding: 7px 10px;
+}
+
 .pop-acoes button {
   font-size: 13px;
   padding: 6px 12px;

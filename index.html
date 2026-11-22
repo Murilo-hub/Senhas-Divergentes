@@ -180,23 +180,24 @@
           <li>O <b>Status</b>, o <b>Nº Chamado</b>, o <b>Tipo</b> e a <b>Categoria</b> escolhidos ficam salvos neste navegador e, com o banco conectado, também no banco, onde todo o time vê. Sem banco, outra pessoa ou outro navegador não vê o que você marcou. Ao carregar a base do dia seguinte, o que foi marcado volta para as NFs com a mesma senha e o mesmo número de NF.</li>
         </ul>
       </li>
-      <li>Os dados ficam só no seu navegador. Nada é enviado para fora.</li>
+      <li>Sem entrar no banco, o que você marca fica só neste navegador. Depois de entrar no banco (botão no topo), tudo vai para o banco do time no Supabase.</li>
     </ol>
-    <h3>Banco de dados (histórico)</h3>
-    <p>O banco guarda todas as senhas divergentes de todas as bases carregadas. Assim, o <b>Top fornecedores</b> mostra o total acumulado de cada fornecedor, separado em comercial e tributário. O banco é um arquivo <code>historico-senhas.json</code> numa pasta do OneDrive ou SharePoint que todo o time acessa. Funciona no <b>Edge</b> ou no <b>Chrome</b>.</p>
+    <h3>Banco de dados (histórico do time)</h3>
+    <p>O banco guarda todas as senhas divergentes de todas as bases carregadas, com o que cada pessoa marcou (Status, Nº Chamado, Categoria, Tipo e horários), as regras por fornecedor e o arquivo de produtos. Ele fica no <b>Supabase</b> e funciona em qualquer navegador, inclusive no celular. Todos que entram veem as mesmas informações.</p>
     <ol>
-      <li><b>Primeira vez (uma pessoa só):</b> clique em <b>Criar banco</b>, escolha a pasta compartilhada do OneDrive e salve. Depois carregue as bases que já tiver, uma por vez: cada uma entra no histórico.</li>
-      <li><b>Se o banco não for criado:</b> clique no botão do banco, no topo, e leia a mensagem em vermelho. Os casos mais comuns: o painel foi aberto pela visualização do OneDrive, SharePoint, Teams ou e-mail (abra o <code>index.html</code> direto no Edge ou no Chrome); a pasta escolhida é do sistema, como a raiz da pasta do usuário ou da Área de Trabalho (crie uma subpasta, ex.: <code>OneDrive &gt; Senhas Divergentes</code>); ou o navegador não é Edge nem Chrome.</li>
-      <li><b>Demais pessoas:</b> clique em <b>Abrir banco existente</b> e escolha o mesmo <code>historico-senhas.json</code> na pasta sincronizada do OneDrive.</li>
-      <li>O estado do banco fica no botão pequeno ao lado de <b>Carregar planilha</b> (bolinha verde: conectado). Clique nele para ver os detalhes, criar, abrir ou trocar o arquivo.</li>
-      <li><b>Todo dia:</b> ao abrir o painel, clique em <b>Reconectar banco</b> e depois em <b>Reconectar</b> e aceite a permissão do navegador (ele pede uma vez por sessão). Depois clique em <b>Carregar planilha</b> com a base do dia. As senhas novas entram, as que já estavam são atualizadas e nada é contado duas vezes (a chave é senha + NF).</li>
+      <li><b>Entrar:</b> clique em <b>Entrar no banco</b>, no topo (ao lado de Carregar planilha), e use o e-mail e a senha do seu usuário. O login fica guardado neste navegador até você clicar em <b>Sair</b>.</li>
+      <li><b>Todo dia:</b> clique em <b>Carregar planilha</b> com a base do dia. As senhas novas entram, as que já estavam são atualizadas e nada é contado duas vezes (a chave é senha + NF). Basta uma pessoa carregar.</li>
+      <li>O que você muda é gravado na hora. O painel busca o que os colegas mudaram a cada 15 segundos. Passe o mouse no Status para ver quem fez a última alteração da NF.</li>
+      <li>Sem internet, as alterações ficam guardadas no navegador e são enviadas quando a conexão voltar (o quadro do banco mostra quantas estão aguardando).</li>
     </ol>
     <ul>
-      <li>O quadro do banco mostra quantas senhas estão no histórico e quantas estão em aberto. Com o banco conectado, use <b>Base carregada</b> ou <b>Histórico completo</b>, na linha dos filtros, para escolher o que o Painel e a Base detalhada mostram.</li>
-      <li>No Top fornecedores, cada linha mostra o total e, ao lado, quantas são <b>com.</b> (comerciais) e <b>trib.</b> (tributárias). A frase acima da lista diz se os números são do histórico ou só da base carregada e qual o período.</li>
-      <li>O que você escolhe na tela (Tipo, Categoria, Nº Chamado e Status, com os horários de cada etapa) e as regras por fornecedor também vão para o banco, e o resto do time vê. O painel confere o arquivo a cada minuto e traz o que os colegas gravaram.</li>
+      <li>O botão do banco mostra o estado (bolinha verde: conectado). Clique nele para ver quantas senhas estão no histórico, quantas estão em aberto e a hora da última sincronização.</li>
+      <li><b>Exportar backup</b>: baixa tudo num arquivo <code>.json</code>. Vale fazer de vez em quando, porque o plano gratuito do Supabase não faz backup automático.</li>
+      <li><b>Importar arquivo…</b>: traz para o banco um backup ou o antigo <code>historico-senhas.json</code> do OneDrive. Em cada senha vale a alteração mais recente; nada é apagado.</li>
+      <li>Com o banco conectado, use <b>Base carregada</b> ou <b>Histórico completo</b>, na linha dos filtros, para escolher o que o Painel e a Base detalhada mostram.</li>
       <li>Uma senha que estava divergente e na base seguinte aparece como FINALIZADO com <code>FIM DIV</code> preenchido é marcada como resolvida no histórico automaticamente.</li>
-      <li>Não apague nem edite o <code>historico-senhas.json</code> à mão. Para começar do zero, crie um banco novo com outro nome.</li>
+      <li><b>Configuração (uma vez só):</b> rode o arquivo <code>supabase/schema.sql</code> no SQL Editor do Supabase, crie um usuário para cada pessoa em Authentication &gt; Users e desligue "Allow new users to sign up". O endereço e a chave pública do projeto ficam em <code>SUPABASE</code> no <code>CONFIG</code>.</li>
+      <li>Se o painel ficar uma semana sem ninguém usar, o Supabase gratuito pausa o projeto. Para voltar, entre em supabase.com e clique em <b>Restore</b> no projeto.</li>
     </ul>
     <h3>Colunas da planilha</h3>
     <p>O painel acha o cabeçalho sozinho, mesmo que a exportação tenha linhas de título antes. As outras colunas da planilha são ignoradas.</p>
@@ -231,7 +232,7 @@
     <h3>Como alterar o painel</h3>
     <p>Todo ajuste simples está no bloco <code>CONFIG</code>, no início do arquivo <code>script.js</code>, com comentários. Exemplos: mudar o top 10 para top 5 (<code>TOP_N</code>), usar a mediana em vez da média (<code>METRICA_TEMPO</code>), aceitar outros nomes de coluna (<code>COLUNAS</code>) ou fixar os dados dentro da página (<code>CSV_INICIAL</code>). A lista de categorias do seletor fica em <code>CATEGORIAS</code>: para incluir, tirar ou corrigir uma categoria, edite ali. As cores ficam no início do arquivo <code>style.css</code>. As cores do status Resolvida ficam em <code>--chk</code> e as do prazo em <code>--ok</code>, <code>--tri</code> e <code>--abx</code>. As cores do destaque das senhas em aberto ficam em <code>--ab</code> (fundo) e <code>--abx</code> (faixa e selo), no início do <code>style.css</code>.</p>
     <h3>Compartilhar com o time</h3>
-    <p>Envie a pasta com os três arquivos (<code>index.html</code>, <code>style.css</code> e <code>script.js</code>) ou publique-a em um servidor interno. Para todos verem os mesmos números, usem o mesmo banco de dados (<code>historico-senhas.json</code>) numa pasta compartilhada do OneDrive. Basta uma pessoa carregar a base do dia para o total de todos ser atualizado.</p>
+    <p>Envie a pasta com os três arquivos (<code>index.html</code>, <code>style.css</code> e <code>script.js</code>) ou publique-a em um servidor interno. Para todos verem os mesmos números, cada pessoa entra no banco com o seu usuário. Basta uma pessoa carregar a base do dia para o total de todos ser atualizado.</p>
   </div>
 </section>
 </main>

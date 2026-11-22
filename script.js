@@ -3,6 +3,13 @@
    CONFIG: ajustes simples. Mexa aqui antes de mexer no resto do código.
    ===================================================================== */
 const CONFIG = {
+  // Banco de dados do time (Supabase). url: endereço do projeto. chave: a chave PÚBLICA (Publishable key ou anon key).
+  // Nunca coloque aqui a chave secret / service_role. As tabelas são criadas pelo arquivo supabase/schema.sql.
+  SUPABASE: {
+    url: 'https://ayjitqikgfvjfrynniod.supabase.co',
+    chave: 'sb_publishable_4a3GRMlPCVXYGCQjzteNng_ThyO13eX',
+    intervaloSeg: 15            // de quantos em quantos segundos buscar o que os colegas alteraram
+  },
   TOP_N: 10,                    // quantos itens mostrar em cada ranking
   METRICA_TEMPO: 'media',       // 'media' ou 'mediana' (tempo de resolução por categoria, em horas)
   CD: ['910', 'Arujá'],         // só aparecem linhas destes CDs (número ou nome; compara sem acento e sem maiúsculas)
@@ -209,7 +216,8 @@ function definirStatus(d, s){ // muda o status e guarda os horários de cada eta
 function seletorStatus(d){
   const ops = d.deArquivo && !FINAIS.has(d.statusManual) ? ['resolvida', 'recusa_total', 'recusa_parcial'] : Object.keys(STATUS);
   if(!ops.includes(d.status)) ops.unshift(d.status);
-  const tit = d.status === 'prioridade' && d.prioridadeEm ? 'Prioridade pedida em ' + dataHoraBR(d.prioridadeEm) : d.resolucao ? STATUS[d.status] + ' em ' + dataHoraBR(d.resolucao) : 'Status do chamado';
+  const tit = (d.status === 'prioridade' && d.prioridadeEm ? 'Prioridade pedida em ' + dataHoraBR(d.prioridadeEm) : d.resolucao ? STATUS[d.status] + ' em ' + dataHoraBR(d.resolucao) : 'Status do chamado')
+    + (d.alteradoPor ? '\nÚltima alteração: ' + d.alteradoPor + (d.alteradoEm ? ', ' + dataHoraBR(d.alteradoEm) : '') : '');
   return `<select class="sel-status st-${d.status || 'sem'}" data-status="${esc(d.id)}" aria-label="Status da NF ${esc(d.nf)}" title="${esc(tit)}">`
     + ops.map(v => `<option value="${v}"${v === d.status ? ' selected' : ''}>${STATUS[v]}</option>`).join('') + '</select>';
 }
@@ -439,7 +447,7 @@ function motivos(dv){ // motivos mais frequentes e fornecedores reincidentes (me
    Ordem: 1) itens das NFs ligadas à senha (EAN ou PLU no arquivo de produtos); 2) fornecedor no arquivo de produtos
    (pelo CNPJ ou pelo nome); 3) regra do fornecedor (para quem não está no arquivo).
    A escolhida na tela sempre vale mais. A da planilha também, desde que seja uma categoria da lista. */
-let PRODUTOS = { nome: '', total: 0, porPlu: new Map(), porEan: new Map(), porForn: new Map(), porCnpj: new Map() };
+let PRODUTOS = { nome: '', total: 0, resumo: [], porForn: new Map(), porCnpj: new Map() };
 let REGRAS = lerSalvo(CONFIG.CHAVE_REGRAS); if(!Array.isArray(REGRAS)) REGRAS = []; // [{ forn, cat, origem: 'tela'|'aprendida', alterado, removida }]
 const CACHE_FORN = new Map(); // fornecedor -> categoria mais comum no cadastro (evita refazer a busca a cada desenho)
 const codigo = v => { const t = String(v ?? '').trim().toUpperCase(); return /^\d+$/.test(t) ? t.replace(/^0+(?=\d)/, '') : t; }; // compara códigos sem zeros à esquerda
@@ -469,14 +477,19 @@ function nucleo(f){ // nome do fornecedor sem código na frente e sem LTDA, S.A.
   const n = norm(f).replace(/^\d+\s+/, ''), t = n.split(' ').filter(p => p.length > 1 && !PALAVRAS_EMPRESA.has(p) && !/^\d+$/.test(p)); // letras soltas (S A, S/A) também saem
   return t.join(' ') || n;
 }
-function indexarProdutos(nome, lista){ // lista: [plu, ean, fornecedor, categoria, cnpj]
-  const porPlu = new Map(), porEan = new Map(), porForn = new Map(), porCnpj = new Map();
-  const somar = (mapa, k, fo, cat) => { if(!mapa.has(k)) mapa.set(k, { nome: fo, cats: new Map() }); const m = mapa.get(k).cats; m.set(cat, (m.get(cat) || 0) + 1); };
-  for(const [plu, ean, fo, cat, cnpj] of lista){ if(!cat) continue;
-    if(plu) porPlu.set(plu, cat); if(ean) porEan.set(ean, cat);
-    if(fo) somar(porForn, nucleo(fo), fo, cat);
-    if(cnpj) somar(porCnpj, cnpj, fo || cnpj, cat); }
-  PRODUTOS = { nome, total: lista.length, porPlu, porEan, porForn, porCnpj }; CACHE_FORN.clear();
+function resumirProdutos(lista){ // [plu, ean, fornecedor, categoria, cnpj] por produto -> [fornecedor, categoria, cnpj, quantidade]
+  const m = new Map();
+  for(const [, , fo, cat, cnpj] of lista){ if(!cat) continue; const k = fo + '\u0000' + cat + '\u0000' + (cnpj || ''); m.set(k, (m.get(k) || 0) + 1); }
+  return [...m].map(([k, n]) => [...k.split('\u0000'), n]);
+}
+function indexarProdutos(nome, resumo){ // resumo: [fornecedor, categoria, cnpj, quantidade de produtos]
+  const porForn = new Map(), porCnpj = new Map();
+  const somar = (mapa, k, fo, cat, n) => { if(!mapa.has(k)) mapa.set(k, { nome: fo, cats: new Map() }); const m = mapa.get(k).cats; m.set(cat, (m.get(cat) || 0) + n); };
+  let total = 0;
+  for(const [fo, cat, cnpj, n = 1] of resumo){ if(!cat) continue; total += n;
+    if(fo) somar(porForn, nucleo(fo), fo, cat, n);
+    if(cnpj) somar(porCnpj, cnpj, fo || cnpj, cat, n); }
+  PRODUTOS = { nome, total, resumo, porForn, porCnpj }; CACHE_FORN.clear();
 }
 async function carregarProdutos(f){
   try{
@@ -487,9 +500,10 @@ async function carregarProdutos(f){
       .filter(x => x[3] && (x[2] || x[4]));
     if(!lista.length) throw new Error('Nenhuma linha com categoria.');
     const cab = rows[c.linha], usadas = Object.entries(c.idx).filter(([, i]) => i >= 0).map(([k, i]) => k.toUpperCase() + ' = "' + String(cab[i]).trim() + '"');
-    indexarProdutos(f.name, lista); PRODUTOS.colunas = usadas.join(', ');
-    await idbGravar('produtos', { nome: f.name, lista, colunas: PRODUTOS.colunas }); $('erroProdutos').textContent = '';
+    indexarProdutos(f.name, resumirProdutos(lista)); PRODUTOS.colunas = usadas.join(', ');
+    await idbGravar('produtos', { nome: f.name, resumo: PRODUTOS.resumo, colunas: PRODUTOS.colunas }); $('erroProdutos').textContent = '';
     redesenhar();
+    if(BANCO.ok) await enviarProdutos(); // o time todo passa a usar este arquivo
   } catch(e){ $('erroProdutos').textContent = 'Não foi possível ler o arquivo de produtos. ' + e.message; }
 }
 async function removerProdutos(){ indexarProdutos('', []); await idbGravar('produtos', null); redesenhar(); }
@@ -526,7 +540,7 @@ function salvarRegra(forn, cat, origem){ // cria ou troca a regra deste forneced
   const k = norm(forn); if(!k) return; let r = REGRAS.find(x => norm(x.forn) === k);
   if(!r){ if(!cat) return; r = { forn: String(forn).trim() }; REGRAS.push(r); }
   Object.assign(r, { cat: cat || r.cat, origem: cat ? origem : r.origem, removida: !cat, alterado: new Date().toISOString() });
-  gravarSalvo(REGRAS, CONFIG.CHAVE_REGRAS); if(BANCO.ok) salvarBanco();
+  gravarSalvo(REGRAS, CONFIG.CHAVE_REGRAS); REGRAS_PENDENTES.add(k); if(BANCO.ok) salvarBanco();
 }
 function juntarRegras(lista){ // regras vindas do banco: em cada fornecedor vale a alteração mais recente
   let mudou = 0;
@@ -560,16 +574,18 @@ function desenharCategorias(){ // aba Categorias: resumo do cadastro, regras e q
 }
 
 
-/* ===== 3c) BANCO DE DADOS (histórico num arquivo .json, ex.: numa pasta do OneDrive) =====
-   Cada base carregada é juntada ao histórico, sem repetir a mesma senha e NF.
-   As escolhas da tela (tipo, categoria, resolvido) também vão para o arquivo, então todos que usam o mesmo arquivo veem o mesmo.
-   Funciona no Edge e no Chrome. O navegador pede permissão para mexer no arquivo uma vez por sessão. */
-const BANCO = { handle: null, ok: false, nome: '', lido: 0, atualizado: null, timer: null, erro: '' }; // erro: última falha, fica visível até dar certo
-const temSuporteBanco = () => 'showOpenFilePicker' in window;
+/* ===== 3c) BANCO DE DADOS (Supabase) =====
+   Cada pessoa entra com e-mail e senha (usuários criados no Supabase). O painel baixa o histórico, grava cada alteração
+   e, a cada poucos segundos, busca o que os colegas mudaram. Cada base carregada é juntada ao histórico,
+   sem repetir a mesma senha e NF. As tabelas são criadas pelo arquivo supabase/schema.sql. */
+const BANCO = { ok: false, erro: '', sessao: null, timer: null, sincronizado: null, conectando: false, enviando: false, deNovo: false,
+  ult: { registros: '', regras: '', produtos: '' } }; // ult: hora (do servidor) da alteração mais recente já recebida de cada tabela
+const CHAVE_SESSAO = 'painel-senhas-sessao';
+const PENDENTES = new Set(), REGRAS_PENDENTES = new Set(); // senhas e regras alteradas aqui que ainda não foram gravadas no banco
 const CAMPOS_ARQUIVO = ['senha','nf','cd','status','fornecedor','cnpj','categoriaArquivo','tipoArquivo','tipoPorColuna','agenda','inicio','resolucaoArquivo','descricao'];
 const CAMPOS_MANUAIS = ['tipoManual','categoriaManual','resolucaoManual','chamadoManual','statusManual','chamadoEm','prioridadeEm'];
 const CAMPOS_DATA = ['agenda','inicio','resolucaoArquivo','resolucaoManual','chamadoEm','prioridadeEm','primeiraVez','ultimaVez'];
-// Guarda o "endereço" do arquivo escolhido no navegador, para reconectar sem procurar de novo
+// Guarda dados maiores no navegador (ex.: o arquivo de produtos)
 function idb(modo, fn){ return new Promise((ok, erro) => { const r = indexedDB.open('painel-senhas', 1);
   r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onerror = () => erro(r.error);
   r.onsuccess = () => { try{ const t = r.result.transaction('kv', modo), q = fn(t.objectStore('kv'));
@@ -582,22 +598,14 @@ function paraJson(d){ const o = { id: d.id, alterado: d.alterado };
   return o; }
 function deJson(o){ const d = { ...o }; for(const k of CAMPOS_DATA) d[k] = d[k] ? new Date(d[k]) : null;
   d.tipoArquivo = d.tipoArquivo || 'nd'; return aplicar(d); }
-const marcar = d => { d.alterado = new Date().toISOString(); };
+const marcar = d => { d.alterado = new Date().toISOString(); PENDENTES.add(d.id); }; // marca a senha como alterada (vai para o banco)
 
-async function lerArquivoBanco(){ // lê o arquivo e devolve a lista de registros (arquivo vazio = banco novo)
-  const f = await BANCO.handle.getFile(); BANCO.lido = f.lastModified;
-  const t = (await f.text()).trim(); if(!t) return [];
-  const j = JSON.parse(t); if(!Array.isArray(j.registros)) throw new Error('o arquivo não é um banco deste painel');
-  BANCO.atualizado = j.atualizado ? new Date(j.atualizado) : null;
-  BANCO.regrasMudaram = juntarRegras(j.regras); // regras "fornecedor -> categoria" do time
-  if(BANCO.regrasMudaram) CACHE_FORN.clear();
-  return j.registros.map(deJson);
-}
-function juntarDoArquivo(regs){ // junta o que está no arquivo com o que está na tela: em cada senha vale a alteração mais recente
+function juntarDoArquivo(regs){ // junta registros vindos do banco (ou de um backup) com os da tela: em cada senha vale a alteração mais recente
   let mudou = 0;
   for(const r of regs){ const h = HIST.get(r.id);
     if(!h){ HIST.set(r.id, r); mudou++; }
-    else if((r.alterado || '') > (h.alterado || '')){ Object.assign(h, r); aplicar(h); mudou++; } } // mantém o mesmo objeto (a tabela aponta para ele)
+    else if((r.alterado || '') > (h.alterado || '')){ Object.assign(h, r); aplicar(h); mudou++; } // mantém o mesmo objeto (a tabela aponta para ele)
+    else if(r.alteradoPor){ h.alteradoPor = r.alteradoPor; h.alteradoEm = r.alteradoEm; } }
   return mudou;
 }
 function juntarBase(regs, outras){ // junta a base carregada ao histórico; devolve quantas senhas são novas e quantas foram atualizadas
@@ -619,87 +627,185 @@ function juntarBase(regs, outras){ // junta a base carregada ao histórico; devo
     h.ultimaVez = agora; marcar(h); aplicar(h); atualizadas++; }
   return { novas, atualizadas };
 }
-async function gravarBanco(){ // relê o arquivo (alguém pode ter mexido), junta e grava
-  if(!BANCO.ok) return;
+
+// --- Conversa com o Supabase (API REST, sem biblioteca) ---
+const bancoConfigurado = () => !!(CONFIG.SUPABASE.url && CONFIG.SUPABASE.chave);
+class ErroBanco extends Error { constructor(msg, status, codigo){ super(msg); this.status = status; this.codigo = codigo; } }
+async function sb(caminho, { metodo = 'GET', corpo, prefer, semSessao } = {}){ // uma chamada ao Supabase; erro vira ErroBanco
+  if(!semSessao) await garantirSessao();
+  const cab = { apikey: CONFIG.SUPABASE.chave, 'Content-Type': 'application/json' };
+  if(!semSessao) cab.Authorization = 'Bearer ' + BANCO.sessao.access_token;
+  if(prefer) cab.Prefer = prefer;
+  let r;
+  try{ r = await fetch(CONFIG.SUPABASE.url.replace(/\/+$/, '') + caminho, { method: metodo, headers: cab, body: corpo == null ? undefined : JSON.stringify(corpo) }); }
+  catch(e){ throw new ErroBanco(String(e?.message || e), 0, 'rede'); }
+  const t = await r.text(); let j = null; try{ j = t ? JSON.parse(t) : null; } catch(e){}
+  if(!r.ok) throw new ErroBanco(j?.msg || j?.message || j?.error_description || j?.error || t || r.statusText, r.status, j?.code || j?.error_code || (typeof j?.error === 'string' ? j.error : ''));
+  return j;
+}
+function guardarSessao(s){ // s: resposta do login ou da renovação (o acesso vale 1 hora e é renovado sozinho)
+  BANCO.sessao = s ? { access_token: s.access_token, refresh_token: s.refresh_token, expira: Date.now() + (s.expires_in || 3600) * 1000,
+    email: s.user?.email || s.email || BANCO.sessao?.email || '' } : null;
+  try{ if(BANCO.sessao) localStorage.setItem(CHAVE_SESSAO, JSON.stringify(BANCO.sessao)); else localStorage.removeItem(CHAVE_SESSAO); } catch(e){}
+}
+async function garantirSessao(){
+  if(!BANCO.sessao) throw new ErroBanco('sem sessão', 401, 'sem_sessao');
+  if(BANCO.sessao.expira - Date.now() > 60000) return;
+  if(!BANCO.renovando) BANCO.renovando = sb('/auth/v1/token?grant_type=refresh_token', { metodo: 'POST', corpo: { refresh_token: BANCO.sessao.refresh_token }, semSessao: true })
+    .then(guardarSessao).catch(e => { if(e.codigo !== 'rede') guardarSessao(null); throw e.codigo === 'rede' ? e : new ErroBanco('sessão expirada', 401, 'sessao_expirada'); })
+    .finally(() => { BANCO.renovando = null; });
+  await BANCO.renovando;
+}
+async function baixarTudo(tabela, campos, ordem){ // lê a tabela inteira, de 1000 em 1000 linhas
+  const tudo = [];
+  for(let ini = 0; ; ini += 1000){ const l = await sb(`/rest/v1/${tabela}?select=${campos}&order=${ordem}&limit=1000&offset=${ini}`); tudo.push(...l); if(l.length < 1000) return tudo; }
+}
+function deLinha(l){ const d = deJson({ ...l.dados, id: l.id }); d.alteradoPor = l.alterado_por || ''; d.alteradoEm = l.alterado ? new Date(l.alterado) : null; return d; }
+function anotar(tabela, linhas){ for(const l of linhas) if(l.alterado && l.alterado > BANCO.ult[tabela]) BANCO.ult[tabela] = l.alterado; }
+const desde = tabela => BANCO.ult[tabela] ? '&alterado=gt.' + encodeURIComponent(new Date(Date.parse(BANCO.ult[tabela]) - 30000).toISOString()) : ''; // 30 s de folga
+function usarProdutosDoBanco(p){ if(!p?.resumo?.length) return; indexarProdutos(p.nome || 'arquivo de produtos', p.resumo); PRODUTOS.colunas = p.colunas || '';
+  idbGravar('produtos', { nome: PRODUTOS.nome, resumo: p.resumo, colunas: PRODUTOS.colunas }); }
+
+async function entrarBanco(email, senha){ // login com e-mail e senha
+  BANCO.erro = ''; BANCO.ultimoEmail = email; BANCO.conectando = true; desenharBanco('', true);
+  try{ guardarSessao(await sb('/auth/v1/token?grant_type=password', { metodo: 'POST', corpo: { email, password: senha }, semSessao: true })); await abrirBancoSupabase(); }
+  catch(e){ BANCO.conectando = false; falhaBanco(e); }
+}
+async function sairBanco(){
+  try{ if(BANCO.sessao) await sb('/auth/v1/logout', { metodo: 'POST' }); } catch(e){}
+  guardarSessao(null); clearInterval(BANCO.timer); BANCO.ok = false; BANCO.erro = ''; HIST.clear(); PENDENTES.clear(); REGRAS_PENDENTES.clear();
+  BANCO.ult = { registros: '', regras: '', produtos: '' }; VISAO = 'base'; redesenhar();
+}
+async function abrirBancoSupabase(){ // depois do login (ou com o login guardado): baixa tudo e passa a usar o banco
+  BANCO.conectando = true; desenharBanco('', true);
   try{
-    juntarDoArquivo(await lerArquivoBanco());
-    BANCO.atualizado = new Date();
-    const w = await BANCO.handle.createWritable();
-    await w.write(JSON.stringify({ versao: 1, atualizado: BANCO.atualizado.toISOString(), registros: [...HIST.values()].map(paraJson), regras: REGRAS }, null, 1));
-    await w.close(); BANCO.lido = (await BANCO.handle.getFile()).lastModified;
-    desenharBanco();
-  } catch(e){ falhaBanco(e); }
+    const [linhas, regras, prod] = await Promise.all([baixarTudo('registros', 'id,dados,alterado,alterado_por', 'id'),
+      baixarTudo('regras', 'forn_chave,dados,alterado', 'forn_chave'), sb('/rest/v1/produtos?select=nome,colunas,resumo,alterado&id=eq.1')]);
+    HIST.clear(); BANCO.ult = { registros: '', regras: '', produtos: '' };
+    juntarDoArquivo(linhas.map(deLinha)); anotar('registros', linhas);
+    if(juntarRegras(regras.map(r => r.dados))) CACHE_FORN.clear(); anotar('regras', regras);
+    if(prod[0]){ usarProdutosDoBanco(prod[0]); anotar('produtos', prod); }
+    else if(PRODUTOS.total) await enviarProdutos(); // arquivo de produtos que só estava neste navegador vai para o banco
+    BANCO.ok = true; BANCO.erro = ''; BANCO.conectando = false; VISAO = 'hist';
+    if(BASE_REAL) juntarBase(DADOS, DADOS.outras); // a base que já estava aberta entra no histórico
+    for(const r of REGRAS) if(!regras.some(x => x.forn_chave === norm(r.forn))) REGRAS_PENDENTES.add(norm(r.forn)); // regras criadas antes do banco
+    redesenhar(); await enviarPendentes(); vigiarBanco();
+  } catch(e){ BANCO.conectando = false; falhaBanco(e); }
+}
+async function enviarPendentes(){ // grava no banco, em lotes, as senhas e as regras alteradas aqui
+  if(!BANCO.ok) return;
+  if(BANCO.enviando){ BANCO.deNovo = true; return; }
+  BANCO.enviando = true;
+  try{
+    do{ BANCO.deNovo = false;
+      const ids = [...PENDENTES].filter(id => HIST.has(id)); PENDENTES.clear();
+      for(let i = 0; i < ids.length; i += 500){
+        try{ await sb('/rest/v1/registros?on_conflict=id', { metodo: 'POST', prefer: 'resolution=merge-duplicates,return=minimal',
+          corpo: ids.slice(i, i + 500).map(id => ({ id, dados: paraJson(HIST.get(id)) })) }); }
+        catch(e){ ids.slice(i).forEach(id => PENDENTES.add(id)); throw e; } } // o que não foi gravado tenta de novo depois
+      const ks = [...REGRAS_PENDENTES]; REGRAS_PENDENTES.clear();
+      const linhas = ks.map(k => REGRAS.find(r => norm(r.forn) === k)).filter(Boolean).map(r => ({ forn_chave: norm(r.forn), dados: r }));
+      if(linhas.length) try{ await sb('/rest/v1/regras?on_conflict=forn_chave', { metodo: 'POST', prefer: 'resolution=merge-duplicates,return=minimal', corpo: linhas }); }
+        catch(e){ ks.forEach(k => REGRAS_PENDENTES.add(k)); throw e; }
+    } while(BANCO.deNovo);
+    BANCO.sincronizado = new Date(); BANCO.erro = ''; desenharBanco();
+  } catch(e){ falhaBanco(e, true); }
+  finally{ BANCO.enviando = false; }
+}
+async function enviarProdutos(){ // grava o resumo do arquivo de produtos para o time todo
+  if(!PRODUTOS.total) return;
+  await sb('/rest/v1/produtos?on_conflict=id', { metodo: 'POST', prefer: 'resolution=merge-duplicates,return=minimal',
+    corpo: [{ id: 1, nome: PRODUTOS.nome, colunas: PRODUTOS.colunas || '', resumo: PRODUTOS.resumo }] });
 }
 let esperaGravar = null;
-const salvarBanco = () => { clearTimeout(esperaGravar); esperaGravar = setTimeout(gravarBanco, 600); }; // junta cliques seguidos numa gravação só
-async function conectarBanco(handle){ // passa a usar este arquivo como banco
-  BANCO.handle = handle; BANCO.nome = handle.name;
+const salvarBanco = () => { clearTimeout(esperaGravar); esperaGravar = setTimeout(enviarPendentes, 600); }; // junta cliques seguidos numa gravação só
+function vigiarBanco(){ clearInterval(BANCO.timer); BANCO.timer = setInterval(buscarNovidades, CONFIG.SUPABASE.intervaloSeg * 1000); }
+async function buscarNovidades(){ // traz o que os colegas gravaram desde a última busca
+  if(!BANCO.ok) return;
   try{
-    HIST.clear(); juntarDoArquivo(await lerArquivoBanco());
-    BANCO.ok = true; BANCO.erro = ''; VISAO = 'hist'; await idbGravar('banco', handle);
-    if(BASE_REAL){ juntarBase(DADOS, DADOS.outras); } // a base que já estava aberta entra no histórico
-    await gravarBanco(); vigiarBanco(); redesenhar();
-  } catch(e){ falhaBanco(e); }
+    if(PENDENTES.size || REGRAS_PENDENTES.size) await enviarPendentes();
+    const [linhas, regras, prod] = await Promise.all([
+      sb(`/rest/v1/registros?select=id,dados,alterado,alterado_por&order=alterado.asc&limit=1000${desde('registros')}`),
+      sb(`/rest/v1/regras?select=forn_chave,dados,alterado&order=alterado.asc${desde('regras')}`),
+      sb(`/rest/v1/produtos?select=nome,colunas,resumo,alterado&id=eq.1${desde('produtos')}`)]);
+    let mudou = juntarDoArquivo(linhas.map(deLinha)) + juntarRegras(regras.map(r => r.dados)); anotar('registros', linhas); anotar('regras', regras);
+    if(prod[0] && prod[0].alterado > BANCO.ult.produtos){ usarProdutosDoBanco(prod[0]); anotar('produtos', prod); mudou++; }
+    if(mudou){ CACHE_FORN.clear(); redesenharSemAtrapalhar(); }
+    BANCO.sincronizado = new Date(); if(BANCO.erro){ BANCO.erro = ''; } desenharBanco();
+  } catch(e){ falhaBanco(e, true); }
 }
-function explicarErroBanco(e){ // traduz os erros do navegador para o que a pessoa pode fazer
-  const n = e?.name || '', m = String(e?.message || e || '');
-  if(/cross.origin|sub.?frame|iframe/i.test(m) || (n === 'SecurityError' && window.top !== window))
-    return 'O navegador bloqueou a janela de arquivos porque o painel está aberto dentro de outra página (visualização do OneDrive, SharePoint, Teams ou e-mail). Baixe a pasta do painel e abra o index.html direto no Edge ou no Chrome.';
-  if(/unsafe|system|too many calls/i.test(m))
-    return 'O navegador não deixa salvar nessa pasta, por ser uma pasta do sistema (ex.: a pasta do usuário, Área de Trabalho ou Documentos na raiz). Crie uma subpasta, por exemplo OneDrive > Senhas Divergentes, e salve o banco dentro dela.';
-  if(n === 'NotAllowedError') return 'O navegador não recebeu permissão para mexer no arquivo. Tente de novo e, quando ele perguntar, clique em Permitir ou Editar arquivos.';
-  if(n === 'NoModificationAllowedError' || n === 'InvalidStateError')
-    return 'O arquivo está bloqueado (pode estar sendo sincronizado pelo OneDrive ou aberto em outro programa). Espere alguns segundos e tente de novo.';
-  if(n === 'NotFoundError') return 'O arquivo do banco não foi encontrado (foi movido, renomeado ou apagado). Abra o arquivo de novo ou crie outro banco.';
-  if(n === 'SyntaxError' || /não é um banco/.test(m)) return 'O arquivo escolhido não é um banco deste painel. Escolha o historico-senhas.json certo ou crie um banco novo.';
-  return 'Não foi possível usar o banco: ' + m + (n ? ' (' + n + ')' : '') + '.';
+function redesenharSemAtrapalhar(){ // redesenha, mas não mexe na tabela enquanto alguém digita ou escolhe algo nela
+  recalcularCategorias(); desenharBanco(); desenharFiltros(); desenharAlertas(); desenharPainel(); desenharCategorias();
+  if(!$('corpo').contains(document.activeElement)) desenharBase();
 }
-function falhaBanco(e){ BANCO.ok = false; BANCO.erro = explicarErroBanco(e); console.error('Banco de dados:', e); redesenhar(); }
-function vigiarBanco(){ // a cada minuto, confere se alguém do time gravou algo novo no arquivo
-  clearInterval(BANCO.timer);
-  BANCO.timer = setInterval(async () => { if(!BANCO.ok) return;
-    try{ const f = await BANCO.handle.getFile(); if(f.lastModified !== BANCO.lido && (juntarDoArquivo(await lerArquivoBanco()) + BANCO.regrasMudaram)) redesenhar(); }
-    catch(e){ falhaBanco(e); } }, 60000);
+function explicarErroBanco(e){ // traduz os erros para o que a pessoa pode fazer
+  const m = String(e?.message || e || ''), c = String(e?.codigo || ''), st = e?.status;
+  if(c === 'rede') return 'Sem conexão com o banco (Supabase). Confira a internet. Se a rede da empresa bloquear o endereço supabase.co, peça à TI para liberar. Se o painel ficou uma semana sem uso, o projeto pode ter sido pausado: reative em supabase.com.';
+  if(c === 'invalid_credentials' || /invalid login|invalid credentials|invalid_grant/i.test(m)) return 'E-mail ou senha incorretos.';
+  if(/email not confirmed/i.test(m)) return 'Este e-mail ainda não foi confirmado. No Supabase, em Authentication > Users, confirme o usuário (ou crie de novo marcando Auto Confirm User).';
+  if(c === 'sem_sessao' || c === 'sessao_expirada' || (st === 401 && /jwt|token/i.test(m))) return 'Seu acesso expirou. Entre de novo.';
+  if(c === '42P01' || c === 'PGRST205' || /does not exist|could not find the table/i.test(m)) return 'As tabelas do banco ainda não foram criadas. Rode o arquivo supabase/schema.sql no SQL Editor do Supabase.';
+  if(c === '42501' || st === 403) return 'Sem permissão no banco. Rode o arquivo supabase/schema.sql (ele cria as regras de acesso) e confira se você entrou com um usuário do time.';
+  if(st >= 500) return 'O Supabase não respondeu agora (o projeto pode estar pausado por falta de uso: reative em supabase.com). Tente de novo em instantes.';
+  return 'Não foi possível usar o banco: ' + m + (st ? ' (' + st + ')' : '') + '.';
 }
-async function criarBanco(){
-  BANCO.erro = '';
-  try{ conectarBanco(await window.showSaveFilePicker({ suggestedName: 'historico-senhas.json', types: [{ description: 'Banco do painel (JSON)', accept: { 'application/json': ['.json'] } }] })); }
-  catch(e){ if(e.name !== 'AbortError') falhaBanco(e); }
+function falhaBanco(e, manter){ // manter: erro ao gravar ou buscar com o banco já aberto (o painel segue e tenta de novo)
+  console.error('Banco de dados:', e);
+  const sair = ['sem_sessao', 'sessao_expirada'].includes(e?.codigo) || (e?.status === 401 && e?.codigo !== 'rede');
+  if(sair){ guardarSessao(null); clearInterval(BANCO.timer); BANCO.ok = false; }
+  else if(!manter) BANCO.ok = false;
+  BANCO.erro = explicarErroBanco(e) + (BANCO.ok && (PENDENTES.size || REGRAS_PENDENTES.size) ? ' As alterações ficam guardadas aqui e são enviadas quando a conexão voltar.' : '');
+  if(BANCO.ok) desenharBanco(); else redesenhar();
 }
-async function abrirBanco(){
-  BANCO.erro = '';
-  try{ const [h] = await window.showOpenFilePicker({ types: [{ description: 'Banco do painel (JSON)', accept: { 'application/json': ['.json'] } }] }); conectarBanco(h); }
-  catch(e){ if(e.name !== 'AbortError') falhaBanco(e); }
+async function iniciarBanco(){ // ao abrir a página: volta ao banco se o login estiver guardado
+  if(!bancoConfigurado()){ desenharBanco(); return; }
+  try{ BANCO.sessao = JSON.parse(localStorage.getItem(CHAVE_SESSAO) || 'null'); } catch(e){}
+  if(BANCO.sessao?.refresh_token) await abrirBancoSupabase(); else desenharBanco();
 }
-async function reconectarBanco(){ // precisa de um clique: o navegador pergunta se pode mexer no arquivo
-  try{ if(await BANCO.handle.requestPermission({ mode: 'readwrite' }) === 'granted') conectarBanco(BANCO.handle); else { BANCO.erro = 'Permissão negada. O histórico não será salvo.'; desenharBanco(); } }
-  catch(e){ falhaBanco(e); }
+function exportarBackup(){ // baixa tudo num arquivo .json (mesmo formato do antigo banco do OneDrive)
+  const j = { versao: 2, atualizado: new Date().toISOString(), registros: [...HIST.values()].map(paraJson), regras: REGRAS };
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(j, null, 1)], { type: 'application/json' }));
+  a.download = 'backup-senhas-' + new Date().toISOString().slice(0, 10) + '.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
-async function iniciarBanco(){ // ao abrir a página: tenta voltar ao arquivo usado da última vez
-  if(!temSuporteBanco()){ desenharBanco(); return; }
-  const h = await idbLer('banco'); if(!h){ desenharBanco(); return; }
-  BANCO.handle = h; BANCO.nome = h.name;
-  try{ if(await h.queryPermission({ mode: 'readwrite' }) === 'granted') return conectarBanco(h); } catch(e){}
-  desenharBanco(); // sem permissão ainda: mostra o botão Reconectar
+async function importarBackup(f){ // traz um historico-senhas.json (OneDrive) ou um backup para o banco
+  try{
+    const j = JSON.parse(await f.text()); if(!Array.isArray(j.registros)) throw new Error('o arquivo não é um banco deste painel');
+    const regs = j.registros.map(deJson), n = juntarDoArquivo(regs);
+    for(const r of regs) PENDENTES.add(r.id);
+    if(juntarRegras(j.regras)) CACHE_FORN.clear();
+    for(const r of Array.isArray(j.regras) ? j.regras : []) REGRAS_PENDENTES.add(norm(r.forn));
+    $('aviso').textContent = `Importado ${f.name}: ${regs.length} senhas no arquivo, ${n} novas ou mais recentes que as do banco.`;
+    redesenhar(); await enviarPendentes();
+  } catch(e){ BANCO.erro = 'Não foi possível importar ' + f.name + ': ' + (e?.message || e) + '.'; desenharBanco(); }
 }
-function desenharBanco(msg = BANCO.erro){ // indicador pequeno no topo; clicar abre os detalhes e os botões
-  const el = $('banco'), aberto = el.querySelector('details')?.open, btn = (id, t, cls = '') => `<button type="button" id="${id}" class="${cls}">${t}</button>`;
+function desenharBanco(msg = BANCO.erro, forcar){ // indicador pequeno no topo; clicar abre o login ou os detalhes
+  const el = $('banco');
+  if(!forcar && el.querySelector('form')?.contains(document.activeElement) && el.dataset.msg === msg) return; // não apaga o que está sendo digitado
+  el.dataset.msg = msg;
+  const aberto = el.querySelector('details')?.open, btn = (id, t, cls = '') => `<button type="button" id="${id}" class="${cls}">${t}</button>`;
   let estado, rotulo, corpo;
-  if(!temSuporteBanco()){ estado = 'off'; rotulo = 'Sem banco'; corpo = '<p><b>Banco de dados indisponível neste navegador.</b> Abra o painel no Edge ou no Chrome para guardar o histórico.</p>'; }
+  if(!bancoConfigurado()){ estado = 'off'; rotulo = 'Banco não configurado';
+    corpo = '<p>Preencha <code>SUPABASE</code> (url e chave) no <code>CONFIG</code> do <code>script.js</code> para guardar o histórico e compartilhar com o time.</p>'; }
   else if(BANCO.ok){
-    const n = HIST.size, ab = [...HIST.values()].filter(d => !d.resolucao).length; // em aberto = não encerradas
+    const n = HIST.size, ab = [...HIST.values()].filter(d => !d.resolucao).length, pend = PENDENTES.size + REGRAS_PENDENTES.size;
     estado = 'on'; rotulo = 'Banco conectado';
-    corpo = `<p><b>${esc(BANCO.nome)}</b><br>${n} ${n === 1 ? 'senha' : 'senhas'} no histórico, ${ab} em aberto.` + (BANCO.atualizado ? `<br><span class="vazio">Gravado ${dataHoraBR(BANCO.atualizado)}</span>` : '') + '</p>'
-      + '<div class="pop-acoes">' + btn('bTrocar', 'Trocar arquivo') + '</div>';
-  } else if(BANCO.handle){ estado = 'espera'; rotulo = 'Reconectar banco';
-    corpo = `<p><b>${esc(BANCO.nome)}</b> precisa da sua permissão para ser usado nesta sessão.</p><div class="pop-acoes">${btn('bRecon', 'Reconectar', 'primario')}${btn('bAbrir', 'Abrir outro')}</div>`; }
-  else { estado = 'off'; rotulo = 'Banco desconectado';
-    corpo = '<p>O histórico não está sendo salvo. Crie o banco numa pasta compartilhada do OneDrive ou abra o que o time já usa.</p><div class="pop-acoes">' + btn('bCriar', 'Criar banco', 'primario') + btn('bAbrir', 'Abrir banco existente') + '</div>'; }
+    corpo = `<p><b>${esc(BANCO.sessao?.email || '')}</b><br>${n} ${n === 1 ? 'senha' : 'senhas'} no histórico, ${ab} em aberto.`
+      + `<br><span class="vazio">${pend ? pend + ' alteração(ões) aguardando envio' : BANCO.sincronizado ? 'Sincronizado às ' + BANCO.sincronizado.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''}</span></p>`
+      + '<div class="pop-acoes">' + btn('bBackup', 'Exportar backup') + btn('bImportar', 'Importar arquivo…')
+      + '<input type="file" id="arqImportar" accept=".json" class="hidden">' + btn('bSair', 'Sair', 'link') + '</div>';
+  } else if(BANCO.conectando){ estado = 'espera'; rotulo = 'Conectando…'; corpo = '<p>Baixando o histórico do banco…</p>'; }
+  else { estado = 'espera'; rotulo = 'Entrar no banco';
+    corpo = '<p>Entre com o seu usuário para ver o histórico do time e gravar suas alterações.</p>'
+      + `<form class="form-login" id="formLogin"><input type="email" id="loginEmail" placeholder="E-mail" autocomplete="username" required value="${esc(BANCO.ultimoEmail || '')}">`
+      + '<input type="password" id="loginSenha" placeholder="Senha" autocomplete="current-password" required>'
+      + '<button type="submit" class="primario">Entrar</button></form>'; }
   if(msg) estado = 'erro';
-  el.innerHTML = `<details class="banco ${estado}"${aberto || msg ? ' open' : ''}><summary title="Banco de dados (histórico)"><span class="ponto"></span>${rotulo}</summary>`
+  el.innerHTML = `<details class="banco ${estado}"${aberto || msg ? ' open' : ''}><summary title="Banco de dados (histórico do time)"><span class="ponto"></span>${rotulo}</summary>`
     + `<div class="banco-pop">${corpo}${msg ? `<p class="erro">${esc(msg)}</p>` : ''}</div></details>`;
   const liga = (id, fn) => { const b = $(id); if(b) b.onclick = fn; };
-  liga('bCriar', criarBanco); liga('bAbrir', abrirBanco); liga('bTrocar', abrirBanco); liga('bRecon', reconectarBanco);
+  liga('bSair', sairBanco); liga('bBackup', exportarBackup); liga('bImportar', () => $('arqImportar').click());
+  if($('arqImportar')) $('arqImportar').onchange = e => { if(e.target.files[0]) importarBackup(e.target.files[0]); e.target.value = ''; };
+  if($('formLogin')) $('formLogin').onsubmit = e => { e.preventDefault(); entrarBanco($('loginEmail').value.trim(), $('loginSenha').value); };
 }
 
 /* ===== 4) DESENHO DA TELA ===== */
@@ -826,7 +932,7 @@ async function definirDados(registros, origem, real = false){ // real: veio de u
   $('aviso').textContent = registros.semDivergentes || (origem + ' · CD ' + CONFIG.CD.join(' / ') + ' · ' + registros.length + ' NFs divergentes'
     + (rep ? ' · atenção: ' + rep + ' linhas repetem uma senha e NF já listadas' : '')) + noBanco;
   redesenhar();
-  if(real && BANCO.ok) await gravarBanco();
+  if(real && BANCO.ok) await enviarPendentes();
 }
 function alterou(d){ // depois de uma escolha na tela: recalcula, guarda no banco e redesenha o painel
   marcar(d); aplicar(d); if(BANCO.ok && HIST.has(d.id)) salvarBanco(); desenharAlertas(); desenharPainel(); desenharBanco();
@@ -907,5 +1013,7 @@ $('corpoRegras').onclick = e => { const f = e.target.dataset?.tirarRegra; if(f !
 try{
   if(CONFIG.CSV_INICIAL.trim()) definirDados(montarRegistros(lerCSV(CONFIG.CSV_INICIAL)), 'Dados embutidos na página'); else redesenhar();
 } catch(e){ $('aviso').textContent = e.message; }
-idbLer('produtos').then(p => { if(p?.lista?.length){ indexarProdutos(p.nome, p.lista); PRODUTOS.colunas = p.colunas || ''; redesenhar(); } }); // volta o cadastro de produtos usado da última vez
-iniciarBanco(); // volta ao banco usado da última vez (se o navegador ainda tiver permissão)
+idbLer('produtos').then(p => { // volta o arquivo de produtos usado da última vez (o do banco, se houver, vale mais)
+  const r = p?.resumo || (p?.lista && resumirProdutos(p.lista));
+  if(r?.length && !PRODUTOS.total){ indexarProdutos(p.nome, r); PRODUTOS.colunas = p.colunas || ''; redesenhar(); } });
+iniciarBanco(); // entra no banco se o login estiver guardado neste navegador
