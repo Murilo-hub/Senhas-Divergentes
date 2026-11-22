@@ -4,8 +4,8 @@
 -- COMO USAR (uma vez só):
 --   1. No Supabase, abra o projeto > SQL Editor > New query.
 --   2. Cole este arquivo inteiro e clique em Run.
---   3. Em Authentication > Users > Add user, crie um usuário (e-mail e senha)
---      para cada pessoa do time, marcando "Auto Confirm User".
+--   3. Em Authentication > Users > Add user > Create new user, crie o usuário
+--      do time (divergencias@assai.com) com uma senha, marcando "Auto Confirm User".
 --   4. Em Authentication > Sign In / Providers, desligue
 --      "Allow new users to sign up", para ninguém de fora criar conta.
 --
