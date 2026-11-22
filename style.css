@@ -1183,13 +1183,124 @@ tr.recusada td {
   color: var(--mu);
 }
 
+/* Tabela da Base detalhada: largura fixa em porcentagem, sem rolagem para o lado.
+   Para mudar a largura de uma coluna, altere a % abaixo (a soma deve dar 100%). */
+.tab-wrap:has(.tab-base) {
+  overflow-x: hidden;
+}
+
+.tab-base {
+  table-layout: fixed;
+  min-width: 0;
+}
+
+.tab-base .c-status  { width: 15%; }
+.tab-base .c-senha   { width: 11%; }
+.tab-base .c-forn    { width: 16%; }
+.tab-base .c-cat     { width: 19%; }
+.tab-base .c-agenda  { width: 9%; }
+.tab-base .c-prazo   { width: 18%; }
+.tab-base .c-chamado { width: 12%; }
+
+.tab-base th,
+.tab-base td {
+  padding: 9px 8px;
+  overflow-wrap: anywhere;
+}
+
+.tab-base select,
+.tab-base .in-chamado {
+  box-sizing: border-box; /* a borda e o espaçamento ficam dentro da largura da coluna */
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.senha {
+  display: block;
+  font-variant-numeric: tabular-nums;
+}
+
+.forn {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Segunda linha dentro da célula (NF, tipo, hora da agenda) */
+.sub-cel {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--mu);
+}
+
+.fim {
+  font-weight: 600;
+  color: var(--mu);
+}
+
+/* Telas estreitas: cada NF vira um cartão, com o nome da coluna antes de cada valor */
+@media (max-width: 900px) {
+  .tab-base colgroup,
+  .tab-base thead {
+    display: none;
+  }
+
+  .tab-base,
+  .tab-base tbody {
+    display: block;
+  }
+
+  .tab-base tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 12px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--bd);
+  }
+
+  .tab-base td {
+    display: block;
+    padding: 4px 0;
+    border: 0;
+    background: none !important;
+    box-shadow: none !important;
+  }
+
+  .tab-base td::before {
+    content: attr(data-rot);
+    display: block;
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--mu);
+    margin-bottom: 2px;
+  }
+
+  .tab-base tr.nv-vencido,
+  .tab-base tr.nv-avaliar,
+  .tab-base tr.nv-recusar { background: var(--ab); box-shadow: inset 4px 0 0 var(--abx); }
+  .tab-base tr.nv-ok      { box-shadow: inset 4px 0 0 var(--ok); }
+  .tab-base tr.nv-atencao,
+  .tab-base tr.nv-aguardando { box-shadow: inset 4px 0 0 var(--tri); }
+}
+
+@media (max-width: 420px) {
+  .tab-base tr {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Status do chamado: lista com a cor da etapa */
 .sel-status {
   font-size: 12.5px;
   font-weight: 600;
   padding: 5px 8px;
   border-radius: 8px;
-  min-width: 158px;
 }
 
 .sel-status option { color: var(--tx); background: var(--card); font-weight: 400; }
@@ -1206,10 +1317,6 @@ tr.recusada td {
 }
 
 /* Coluna Prazo: etiqueta colorida, detalhe embaixo e botões de prioridade */
-.cel-prazo {
-  min-width: 150px;
-}
-
 .prazo {
   display: inline-block;
   font-size: 11.5px;
