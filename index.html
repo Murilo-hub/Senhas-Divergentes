@@ -33,7 +33,6 @@
 <nav class="abas" aria-label="Abas do painel">
   <button class="tab on" data-aba="painel">Painel</button>
   <button class="tab" data-aba="base">Base detalhada</button>
-  <button class="tab" data-aba="notas">Notas fiscais</button>
   <button class="tab" data-aba="categorias">Categorias</button>
   <button class="tab" data-aba="ajuda">Como usar</button>
 </nav>
@@ -116,23 +115,8 @@
 <section id="aba-base" class="hidden">
   <div class="painel">
     <div class="bar"><input id="busca" type="search" placeholder="Buscar por senha, NF, fornecedor, categoria, chamado…" style="flex:1;min-width:220px"><span class="vazio" id="contaBase"></span></div>
-    <div class="tab-wrap"><table><thead><tr><th>Status</th><th>Senha</th><th>NF</th><th>Tipo</th><th>Fornecedor</th><th>Categoria</th><th>Agenda</th><th>Prazo</th><th>Tempo</th><th>Nº Chamado</th></tr></thead><tbody id="corpo"></tbody></table></div>
+    <div class="tab-wrap"><table class="tab-base"><colgroup><col class="c-status"><col class="c-senha"><col class="c-forn"><col class="c-cat"><col class="c-agenda"><col class="c-prazo"><col class="c-chamado"></colgroup><thead><tr><th>Status</th><th>Senha / NF</th><th>Fornecedor / Tipo</th><th>Categoria</th><th>Agenda</th><th>Prazo</th><th>Nº Chamado</th></tr></thead><tbody id="corpo"></tbody></table></div>
     <button type="button" id="maisBase" class="mais hidden">Mostrar mais</button>
-  </div>
-</section>
-
-<!-- ===== ABA: NOTAS FISCAIS ===== -->
-<section id="aba-notas" class="hidden">
-  <div class="painel">
-    <h2>Notas fiscais (XML)</h2>
-    <div class="bar"><label><input type="file" id="arqXml" accept=".xml" multiple class="hidden"><button id="btnXml" type="button">Carregar XMLs das NFs</button></label><span class="vazio" id="resumoNotas"></span></div>
-    <div class="tab-wrap"><table><thead><tr><th>NF</th><th>Fornecedor</th><th>Código</th><th>Produto</th><th>NCM</th><th>Qtd.</th></tr></thead><tbody id="corpoNotas"></tbody></table></div>
-  </div>
-  <div class="painel">
-    <h2>Ler a chave de acesso</h2>
-    <p class="vazio">Cole os 44 dígitos da chave. Ela mostra de onde é a nota, mas não os produtos: eles ficam no XML.</p>
-    <input id="chave" type="text" inputmode="numeric" placeholder="Chave de acesso" style="width:100%;max-width:520px">
-    <p id="chaveOut"></p>
   </div>
 </section>
 
@@ -140,7 +124,7 @@
 <section id="aba-categorias" class="hidden">
   <div class="painel">
     <h2>Cadastro de produtos</h2>
-    <p class="vazio">Arquivo Excel ou CSV dos produtos (PLU) com <b>Fornecedor</b> e <b>Categoria</b>. Ao carregar, cada NF sem categoria recebe automaticamente a categoria mais comum dos produtos daquele fornecedor. O nome é comparado sem LTDA, S.A., COMÉRCIO, DISTRIBUIDORA etc., e pelo CNPJ quando as duas planilhas têm essa coluna. Com os XML das NFs carregados, vale a categoria dos itens da própria nota (pelo EAN ou PLU). Você continua podendo trocar a categoria na Base detalhada.</p>
+    <p class="vazio">Arquivo Excel ou CSV dos produtos (PLU) com <b>Fornecedor</b> e <b>Categoria</b>. Ao carregar, cada NF sem categoria recebe automaticamente a categoria mais comum dos produtos daquele fornecedor. O nome é comparado sem LTDA, S.A., COMÉRCIO, DISTRIBUIDORA etc., e pelo CNPJ quando as duas planilhas têm essa coluna. Você continua podendo trocar a categoria na Base detalhada.</p>
     <div class="bar"><label><input type="file" id="arqProdutos" accept=".csv,.xlsx,.xlsm,.xls,.htm,.html" class="hidden"><button id="btnProdutos" type="button">Carregar arquivo de produtos</button></label>
       <span class="vazio" id="resumoProdutos" style="flex:1"></span><button type="button" id="btnTirarProdutos" class="link hidden">Remover</button></div>
     <p class="erro" id="erroProdutos"></p>
@@ -182,7 +166,8 @@
           <li>A coluna <b>Prazo</b> mostra em que pé está cada NF em aberto: <b>No prazo</b> (verde), vence em breve (amarelo), <b>Pedir prioridade</b> (vermelho), <b>Aguardando prioridade</b>, <b>Avaliar recusa</b> e <b>Recusar NF</b> (vermelho forte).</li>
           <li><b>Pedir prioridade ✉</b>: muda o status para Prioridade solicitada e abre o e-mail já preenchido (senha, NF, fornecedor, chamado, divergência e tempo) para os responsáveis. O botão <b>✉ e-mail</b> abre o e-mail de novo.</li>
           <li>Recusada: use quando não há retorno no chamado ou quando a NF continua divergente depois do prazo.</li>
-          <li>A coluna <b>Tempo</b> mostra o tempo entre o início da tratativa (<code>INI DIV</code> da planilha ou, sem ele, a agenda) e o encerramento (resolvida ou recusada).</li>
+          <li>Embaixo do prazo aparece o tempo: <b>aberta há</b> (desde o início da tratativa, <code>INI DIV</code> da planilha ou, sem ele, a agenda) ou, depois de encerrada, quanto tempo levou até Resolvida ou Recusada.</li>
+          <li>A coluna <b>Senha / NF</b> mostra a senha e o número da NF embaixo. A coluna <b>Fornecedor / Tipo</b> mostra o fornecedor e, embaixo, se a divergência é comercial ou tributária (passe o mouse para ver o texto da divergência).</li>
           <li>Mudou por engano? Escolha outro status. Voltar para Chamado aberto ou Sem chamado reabre a NF.</li>
           <li>Na coluna <b>Categoria</b>, abra a lista e escolha a categoria da NF. As opções estão agrupadas por área (Mercearia I e II, Líquida, Bazar, DPH I e II, Commodities). A escolha é salva na hora e entra nos rankings do Painel. Para tirar a categoria, escolha <b>Escolha a categoria…</b> no topo da lista.</li>
           <li>Se a planilha já trouxer uma categoria que não está na lista, ela aparece no grupo <b>Da planilha</b> e pode ser trocada por uma da lista.</li>
@@ -238,13 +223,11 @@
       <li><b>Evolução das divergências</b>: quantas NFs divergentes por dia (ou por semana, em períodos longos), separadas em comerciais e tributárias, e a comparação dos últimos 7 dias com os 7 anteriores.</li>
       <li><b>Motivos mais frequentes</b>: o texto de DIVERGÊNCIA DOS PEDIDOS vira um motivo padrão (Preço, Quantidade, ICMS / ST, NCM...), com a porcentagem e o acumulado. <b>Fornecedores reincidentes</b>: fornecedor com o mesmo motivo 3 vezes ou mais no período filtrado. Os motivos e as palavras de cada um ficam em <code>MOTIVOS</code> no <code>CONFIG</code>.</li>
     </ul>
-    <h3>Notas fiscais</h3>
-    <p>Na aba <b>Notas fiscais</b>, carregue os arquivos XML das notas (vários de uma vez). O painel liga cada senha à nota pelo número da NF, desempata pelo fornecedor quando o número se repete e lista os produtos de cada nota nesta mesma aba. O campo da chave de acesso decodifica os 44 dígitos e confere o dígito verificador.</p>
     <h3>Prazos, prioridade e recusa</h3>
     <p>O prazo conta a partir do início do chamado (<code>INI DIV</code> da planilha; sem ele, a hora em que o status virou Chamado aberto; sem ela, a agenda). <b>Comercial: 1 hora. Tributária: 3 horas.</b> Passou disso sem solução, a NF fica vermelha com <b>Pedir prioridade</b>. Depois de pedir prioridade, de 30 minutos a 1 hora sem solução, ela mostra <b>Avaliar recusa</b> e depois <b>Recusar NF</b>. Os alertas no topo da página e o número no título da aba do navegador mostram quantas NFs precisam de ação. O painel atualiza os prazos sozinho a cada 30 segundos.</p>
     <p>Os prazos ficam em <code>PRAZO_PRIORIDADE</code>, <code>AVISO_ANTES_MIN</code>, <code>PRAZO_RECUSA_MIN</code> e <code>AVISO_RECUSA_MIN</code>, e os e-mails dos responsáveis (comercial e tributário) em <code>EMAIL_PRIORIDADE</code>, todos no <code>CONFIG</code>.</p>
     <h3>Categorias automáticas</h3>
-    <p>Na aba <b>Categorias</b>, o painel sugere a categoria das NFs que não têm uma. Ordem: 1) os itens dos XML da NF, procurados pelo <b>EAN</b> ou pelo código do produto (<b>PLU</b>) no arquivo de produtos; 2) a categoria mais comum dos produtos do fornecedor no arquivo de produtos (pelo CNPJ ou pelo nome, sem LTDA, S.A. etc.); 3) a regra do fornecedor, para quem não está no arquivo. A escolhida na tela sempre vale mais. A da planilha também, mas só se for uma das categorias da lista. A tabela <b>Fornecedores da base no arquivo de produtos</b> mostra com quem cada fornecedor foi ligado e quais não foram encontrados. O arquivo de produtos fica guardado neste navegador. Regras fixas podem ser escritas em <code>FORNECEDOR_CATEGORIA</code> no <code>CONFIG</code>, e os nomes de coluna aceitos ficam em <code>COLUNAS_PRODUTOS</code>.</p>
+    <p>Na aba <b>Categorias</b>, o painel sugere a categoria das NFs que não têm uma. Ordem: 1) a categoria mais comum dos produtos do fornecedor no arquivo de produtos (pelo CNPJ ou pelo nome, sem LTDA, S.A. etc.); 2) a regra do fornecedor, para quem não está no arquivo. A escolhida na tela sempre vale mais. A da planilha também, mas só se for uma das categorias da lista. A tabela <b>Fornecedores da base no arquivo de produtos</b> mostra com quem cada fornecedor foi ligado e quais não foram encontrados. O arquivo de produtos fica guardado neste navegador. Regras fixas podem ser escritas em <code>FORNECEDOR_CATEGORIA</code> no <code>CONFIG</code>, e os nomes de coluna aceitos ficam em <code>COLUNAS_PRODUTOS</code>.</p>
     <h3>Como alterar o painel</h3>
     <p>Todo ajuste simples está no bloco <code>CONFIG</code>, no início do arquivo <code>script.js</code>, com comentários. Exemplos: mudar o top 10 para top 5 (<code>TOP_N</code>), usar a mediana em vez da média (<code>METRICA_TEMPO</code>), aceitar outros nomes de coluna (<code>COLUNAS</code>) ou fixar os dados dentro da página (<code>CSV_INICIAL</code>). A lista de categorias do seletor fica em <code>CATEGORIAS</code>: para incluir, tirar ou corrigir uma categoria, edite ali. As cores ficam no início do arquivo <code>style.css</code>. As cores do status Resolvida ficam em <code>--chk</code> e as do prazo em <code>--ok</code>, <code>--tri</code> e <code>--abx</code>. As cores do destaque das senhas em aberto ficam em <code>--ab</code> (fundo) e <code>--abx</code> (faixa e selo), no início do <code>style.css</code>.</p>
     <h3>Compartilhar com o time</h3>
