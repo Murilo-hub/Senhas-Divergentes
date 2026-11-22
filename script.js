@@ -49,7 +49,7 @@ const CONFIG = {
   // Categoria pelo fornecedor: parte do nome do fornecedor : categoria.
   // Vale para as NFs sem categoria na planilha e sem escolha manual. As regras criadas na aba Categorias somam-se a estas.
   FORNECEDOR_CATEGORIA: {
-    'AMBEV': 'LÍQUIDA 4 – CERVEJA, CIGARROS'
+    // exemplo: 'NOME DO FORNECEDOR': 'LÍQUIDA 4 – CERVEJA, CIGARROS',
   },
   // Categorias do seletor da Base detalhada. Grupo : lista de "CATEGORIA – SUB-CATEGORIA".
   // Para incluir, tirar ou renomear, edite aqui. Uma categoria escolhida e depois renomeada continua aparecendo na NF com o nome antigo.
