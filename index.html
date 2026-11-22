@@ -58,9 +58,30 @@
   </span>
   <label class="campo"><span>Turno</span><select id="fTurno"></select></label>
   <label class="campo"><span>Categoria</span><select id="fCat" class="f-cat"></select></label>
+  <label class="campo"><span>Situação</span>
+    <select id="fSit">
+      <option value="">Todas</option>
+      <option value="abertas">Em aberto</option>
+      <option value="fora">Fora do prazo</option>
+      <option value="pedir">Pedir prioridade</option>
+      <option value="recusar">Avaliar / recusar</option>
+      <optgroup label="Status">
+        <option value="sem">Sem chamado</option>
+        <option value="chamado">Chamado aberto</option>
+        <option value="prioridade">Prioridade solicitada</option>
+        <option value="resolvida">Resolvida</option>
+        <option value="recusa">Recusada (total ou parcial)</option>
+        <option value="recusa_total">Recusa total</option>
+        <option value="recusa_parcial">Recusa parcial</option>
+      </optgroup>
+    </select>
+  </label>
+  <label class="campo"><span>Fornecedor</span><input id="fForn" type="search" list="listaFiltroForn" placeholder="Todos" class="f-forn"><datalist id="listaFiltroForn"></datalist></label>
   <button type="button" id="fLimpar" class="link hidden">Limpar filtros</button>
   <span class="campo-visao" id="fVisao"></span>
 </div>
+<!-- Alertas de prazo: NFs para pedir prioridade ou recusar (preenchido pelo script.js) -->
+<div class="alertas" id="alertas" aria-live="polite"></div>
 <div class="aviso" id="aviso"></div>
 
 <!-- ===== ABA 1: PAINEL ===== -->
@@ -77,6 +98,14 @@
       <select id="filtroTipo"><option value="todos">Comerciais e tributárias</option><option value="com">Só comerciais</option><option value="tri">Só tributárias</option></select></div>
     <div id="pForn"></div>
   </div>
+  <div class="painel">
+    <div class="bar" style="margin-bottom:6px"><h2 style="margin:0">Evolução das divergências</h2><span class="vazio" id="resumoTend"></span></div>
+    <div id="pTend"></div>
+  </div>
+  <div class="grid">
+    <div class="painel"><h2>Motivos mais frequentes</h2><div id="pMotivos"></div></div>
+    <div class="painel"><h2>Fornecedores reincidentes</h2><p class="vazio legenda-mini">Mesmo motivo várias vezes no período filtrado. Clique para ver as NFs do fornecedor.</p><div id="pReinc"></div></div>
+  </div>
   <div class="grid">
     <div class="painel"><h2>Categorias com maior tempo de resolução: comerciais</h2><div id="pCom"></div></div>
     <div class="painel"><h2>Categorias com maior tempo de resolução: tributárias</h2><div id="pTri"></div></div>
@@ -87,7 +116,8 @@
 <section id="aba-base" class="hidden">
   <div class="painel">
     <div class="bar"><input id="busca" type="search" placeholder="Buscar por senha, NF, fornecedor, categoria, chamado…" style="flex:1;min-width:220px"><span class="vazio" id="contaBase"></span></div>
-    <div class="tab-wrap"><table><thead><tr><th>Resolvido</th><th>Senha</th><th>NF</th><th>Tipo</th><th>Fornecedor</th><th>Categoria</th><th>Agenda</th><th>Resolução</th><th>Horas</th><th>Nº Chamado</th></tr></thead><tbody id="corpo"></tbody></table></div>
+    <div class="tab-wrap"><table><thead><tr><th>Status</th><th>Senha</th><th>NF</th><th>Tipo</th><th>Fornecedor</th><th>Categoria</th><th>Agenda</th><th>Prazo</th><th>Tempo</th><th>Nº Chamado</th></tr></thead><tbody id="corpo"></tbody></table></div>
+    <button type="button" id="maisBase" class="mais hidden">Mostrar mais</button>
   </div>
 </section>
 
@@ -146,12 +176,14 @@
       </li>
       <li>Use os <b>filtros do topo</b> (Período, Turno e Categoria) para ver só uma parte das senhas. Eles valem para o Painel e a Base detalhada e usam a <code>DATA/HORA AGENDA</code>. Os turnos ficam em <code>TURNOS</code> no <code>CONFIG</code>.</li>
       <li>Em <b>Painel</b>, veja os números gerais, os fornecedores com mais divergências e as categorias que demoram mais para resolver.</li>
-      <li>Em <b>Base detalhada</b>, pesquise e confira cada NF divergente. Ao resolver uma divergência, marque a caixa <b>Resolvido</b> (primeira coluna da tabela):
+      <li>Em <b>Base detalhada</b>, pesquise e acompanhe cada NF divergente. As mais urgentes aparecem primeiro.
         <ul>
-          <li>As senhas com chamado <b>ainda em aberto</b> aparecem em destaque: fundo avermelhado, texto em negrito, faixa vermelha à esquerda e o selo <b>Aberta</b> na coluna Resolução. As já resolvidas ficam com fundo normal.</li>
-          <li>Clique uma vez na caixa. Ela fica preenchida, a linha perde o destaque e a coluna <b>Resolução</b> passa a mostrar a data e a hora do clique.</li>
-          <li>A coluna <b>Horas</b> mostra o tempo entre o início da tratativa (<code>INI DIV</code> da planilha ou, sem ele, a agenda) e a resolução, e o <b>Painel</b> é atualizado na hora.</li>
-          <li>Marcou por engano? Clique de novo para desmarcar. A NF volta a ficar <b>Aberta</b> e em destaque.</li>
+          <li>Na coluna <b>Status</b>, escolha a etapa: <b>Chamado aberto</b>, <b>Prioridade solicitada</b>, <b>Resolvida</b>, <b>Recusa total</b> ou <b>Recusa parcial</b>. O painel guarda o horário de cada etapa. Ao digitar o <b>Nº Chamado</b>, o status vira Chamado aberto sozinho.</li>
+          <li>A coluna <b>Prazo</b> mostra em que pé está cada NF em aberto: <b>No prazo</b> (verde), vence em breve (amarelo), <b>Pedir prioridade</b> (vermelho), <b>Aguardando prioridade</b>, <b>Avaliar recusa</b> e <b>Recusar NF</b> (vermelho forte).</li>
+          <li><b>Pedir prioridade ✉</b>: muda o status para Prioridade solicitada e abre o e-mail já preenchido (senha, NF, fornecedor, chamado, divergência e tempo) para os responsáveis. O botão <b>✉ e-mail</b> abre o e-mail de novo.</li>
+          <li>Recusada: use quando não há retorno no chamado ou quando a NF continua divergente depois do prazo.</li>
+          <li>A coluna <b>Tempo</b> mostra o tempo entre o início da tratativa (<code>INI DIV</code> da planilha ou, sem ele, a agenda) e o encerramento (resolvida ou recusada).</li>
+          <li>Mudou por engano? Escolha outro status. Voltar para Chamado aberto ou Sem chamado reabre a NF.</li>
           <li>Na coluna <b>Categoria</b>, abra a lista e escolha a categoria da NF. As opções estão agrupadas por área (Mercearia I e II, Líquida, Bazar, DPH I e II, Commodities). A escolha é salva na hora e entra nos rankings do Painel. Para tirar a categoria, escolha <b>Escolha a categoria…</b> no topo da lista.</li>
           <li>Se a planilha já trouxer uma categoria que não está na lista, ela aparece no grupo <b>Da planilha</b> e pode ser trocada por uma da lista.</li>
           <li>Dica: digite o nome do fornecedor na busca para ver só as senhas dele e achar as que estão em destaque.</li>
@@ -160,7 +192,7 @@
           <li>Tipo com asterisco (<b>Comercial*</b> ou <b>Tributária*</b>): a DIVERGÊNCIA DOS PEDIDOS veio vazia e o tipo foi definido pelas colunas <code>INI/FIM DIV</code>. Passe o mouse na etiqueta para ver de onde veio o tipo.</li>
           <li>Na coluna <b>Nº Chamado</b>, digite o número do chamado aberto para a divergência e tecle Enter (ou clique fora). Ele é salvo na hora e também entra na busca. O texto da DIVERGÊNCIA DOS PEDIDOS aparece ao passar o mouse na etiqueta de tipo.</li>
           <li>Categoria com borda tracejada: foi <b>sugerida</b> automaticamente (aba <b>Categorias</b>). Escolha na lista para confirmar ou trocar.</li>
-          <li>A marcação de <b>Resolvido</b>, o <b>Nº Chamado</b>, o <b>Tipo</b> e a <b>Categoria</b> escolhidos ficam salvos neste navegador e, com o banco conectado, também no banco, onde todo o time vê. Sem banco, outra pessoa ou outro navegador não vê o que você marcou. Ao carregar a base do dia seguinte, o que foi marcado volta para as NFs com a mesma senha e o mesmo número de NF.</li>
+          <li>O <b>Status</b>, o <b>Nº Chamado</b>, o <b>Tipo</b> e a <b>Categoria</b> escolhidos ficam salvos neste navegador e, com o banco conectado, também no banco, onde todo o time vê. Sem banco, outra pessoa ou outro navegador não vê o que você marcou. Ao carregar a base do dia seguinte, o que foi marcado volta para as NFs com a mesma senha e o mesmo número de NF.</li>
         </ul>
       </li>
       <li>Os dados ficam só no seu navegador. Nada é enviado para fora.</li>
@@ -177,7 +209,7 @@
     <ul>
       <li>O quadro do banco mostra quantas senhas estão no histórico e quantas estão em aberto. Com o banco conectado, use <b>Base carregada</b> ou <b>Histórico completo</b>, na linha dos filtros, para escolher o que o Painel e a Base detalhada mostram.</li>
       <li>No Top fornecedores, cada linha mostra o total e, ao lado, quantas são <b>com.</b> (comerciais) e <b>trib.</b> (tributárias). A frase acima da lista diz se os números são do histórico ou só da base carregada e qual o período.</li>
-      <li>O que você escolhe na tela (Tipo, Categoria, Nº Chamado e Resolvido) e as regras por fornecedor também vão para o banco, e o resto do time vê. O painel confere o arquivo a cada minuto e traz o que os colegas gravaram.</li>
+      <li>O que você escolhe na tela (Tipo, Categoria, Nº Chamado e Status, com os horários de cada etapa) e as regras por fornecedor também vão para o banco, e o resto do time vê. O painel confere o arquivo a cada minuto e traz o que os colegas gravaram.</li>
       <li>Uma senha que estava divergente e na base seguinte aparece como FINALIZADO com <code>FIM DIV</code> preenchido é marcada como resolvida no histórico automaticamente.</li>
       <li>Não apague nem edite o <code>historico-senhas.json</code> à mão. Para começar do zero, crie um banco novo com outro nome.</li>
     </ul>
@@ -202,14 +234,19 @@
     <ul>
       <li><b>Fornecedores</b>: quantidade de NFs divergentes por fornecedor. As etiquetas embaixo mostram as categorias de produto mais afetadas. A barra é dividida em comercial (azul), tributária (âmbar) e não informada (cinza) quando o filtro está em “Comerciais e tributárias”.</li>
       <li><b>Categorias por tempo</b>: tempo médio, em horas:minutos (com os dias na frente a partir de 24 horas, ex.: <code>1d 02:30</code>), entre o início da tratativa (<code>INI DIV</code> ou, sem ele, a agenda) e a resolução. Só entram divergências já resolvidas. Um painel para cada tipo de divergência.</li>
-      <li><b>Abertas</b>: NFs sem data de resolução (nem no <code>FIM DIV</code> da planilha, nem marcada na caixa Resolvido). Ficam fora do cálculo de tempo.</li>
+      <li><b>Em aberto</b>: NFs que não estão Resolvidas nem Recusadas (e sem <code>FIM DIV</code> na planilha). <b>Fora do prazo</b>: as que precisam de prioridade, de avaliação de recusa ou de recusa. Clique no indicador para ver a lista.</li>
+      <li><b>Evolução das divergências</b>: quantas NFs divergentes por dia (ou por semana, em períodos longos), separadas em comerciais e tributárias, e a comparação dos últimos 7 dias com os 7 anteriores.</li>
+      <li><b>Motivos mais frequentes</b>: o texto de DIVERGÊNCIA DOS PEDIDOS vira um motivo padrão (Preço, Quantidade, ICMS / ST, NCM...), com a porcentagem e o acumulado. <b>Fornecedores reincidentes</b>: fornecedor com o mesmo motivo 3 vezes ou mais no período filtrado. Os motivos e as palavras de cada um ficam em <code>MOTIVOS</code> no <code>CONFIG</code>.</li>
     </ul>
     <h3>Notas fiscais</h3>
     <p>Na aba <b>Notas fiscais</b>, carregue os arquivos XML das notas (vários de uma vez). O painel liga cada senha à nota pelo número da NF, desempata pelo fornecedor quando o número se repete e lista os produtos de cada nota nesta mesma aba. O campo da chave de acesso decodifica os 44 dígitos e confere o dígito verificador.</p>
+    <h3>Prazos, prioridade e recusa</h3>
+    <p>O prazo conta a partir do início do chamado (<code>INI DIV</code> da planilha; sem ele, a hora em que o status virou Chamado aberto; sem ela, a agenda). <b>Comercial: 1 hora. Tributária: 3 horas.</b> Passou disso sem solução, a NF fica vermelha com <b>Pedir prioridade</b>. Depois de pedir prioridade, de 30 minutos a 1 hora sem solução, ela mostra <b>Avaliar recusa</b> e depois <b>Recusar NF</b>. Os alertas no topo da página e o número no título da aba do navegador mostram quantas NFs precisam de ação. O painel atualiza os prazos sozinho a cada 30 segundos.</p>
+    <p>Os prazos ficam em <code>PRAZO_PRIORIDADE</code>, <code>AVISO_ANTES_MIN</code>, <code>PRAZO_RECUSA_MIN</code> e <code>AVISO_RECUSA_MIN</code>, e os e-mails dos responsáveis (comercial e tributário) em <code>EMAIL_PRIORIDADE</code>, todos no <code>CONFIG</code>.</p>
     <h3>Categorias automáticas</h3>
     <p>Na aba <b>Categorias</b>, o painel sugere a categoria das NFs que não têm uma. Ordem: 1) os itens dos XML da NF, procurados pelo <b>EAN</b> ou pelo código do produto (<b>PLU</b>) no arquivo de produtos; 2) a categoria mais comum dos produtos do fornecedor no arquivo de produtos (pelo CNPJ ou pelo nome, sem LTDA, S.A. etc.); 3) a regra do fornecedor, para quem não está no arquivo. A escolhida na tela sempre vale mais. A da planilha também, mas só se for uma das categorias da lista. A tabela <b>Fornecedores da base no arquivo de produtos</b> mostra com quem cada fornecedor foi ligado e quais não foram encontrados. O arquivo de produtos fica guardado neste navegador. Regras fixas podem ser escritas em <code>FORNECEDOR_CATEGORIA</code> no <code>CONFIG</code>, e os nomes de coluna aceitos ficam em <code>COLUNAS_PRODUTOS</code>.</p>
     <h3>Como alterar o painel</h3>
-    <p>Todo ajuste simples está no bloco <code>CONFIG</code>, no início do arquivo <code>script.js</code>, com comentários. Exemplos: mudar o top 10 para top 5 (<code>TOP_N</code>), usar a mediana em vez da média (<code>METRICA_TEMPO</code>), aceitar outros nomes de coluna (<code>COLUNAS</code>) ou fixar os dados dentro da página (<code>CSV_INICIAL</code>). A lista de categorias do seletor fica em <code>CATEGORIAS</code>: para incluir, tirar ou corrigir uma categoria, edite ali. As cores ficam no início do arquivo <code>style.css</code>. O tamanho da caixa <b>Resolvido</b> fica na seção 7 (Tabela) do <code>style.css</code>, em <code>width</code> e <code>height</code>, e a cor dela em <code>--chk</code>. As cores do destaque das senhas em aberto ficam em <code>--ab</code> (fundo) e <code>--abx</code> (faixa e selo), no início do <code>style.css</code>.</p>
+    <p>Todo ajuste simples está no bloco <code>CONFIG</code>, no início do arquivo <code>script.js</code>, com comentários. Exemplos: mudar o top 10 para top 5 (<code>TOP_N</code>), usar a mediana em vez da média (<code>METRICA_TEMPO</code>), aceitar outros nomes de coluna (<code>COLUNAS</code>) ou fixar os dados dentro da página (<code>CSV_INICIAL</code>). A lista de categorias do seletor fica em <code>CATEGORIAS</code>: para incluir, tirar ou corrigir uma categoria, edite ali. As cores ficam no início do arquivo <code>style.css</code>. As cores do status Resolvida ficam em <code>--chk</code> e as do prazo em <code>--ok</code>, <code>--tri</code> e <code>--abx</code>. As cores do destaque das senhas em aberto ficam em <code>--ab</code> (fundo) e <code>--abx</code> (faixa e selo), no início do <code>style.css</code>.</p>
     <h3>Compartilhar com o time</h3>
     <p>Envie a pasta com os três arquivos (<code>index.html</code>, <code>style.css</code> e <code>script.js</code>) ou publique-a em um servidor interno. Para todos verem os mesmos números, usem o mesmo banco de dados (<code>historico-senhas.json</code>) numa pasta compartilhada do OneDrive. Basta uma pessoa carregar a base do dia para o total de todos ser atualizado.</p>
   </div>
