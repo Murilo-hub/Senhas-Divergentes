@@ -185,7 +185,7 @@
     <h3>Banco de dados (histórico do time)</h3>
     <p>O banco guarda todas as senhas divergentes de todas as bases carregadas, com o que cada pessoa marcou (Status, Nº Chamado, Categoria, Tipo e horários), as regras por fornecedor e o arquivo de produtos. Ele fica no <b>Supabase</b> e funciona em qualquer navegador, inclusive no celular. Todos que entram veem as mesmas informações.</p>
     <ol>
-      <li><b>Entrar:</b> clique em <b>Entrar no banco</b>, no topo (ao lado de Carregar planilha), e use o e-mail e a senha do seu usuário. O login fica guardado neste navegador até você clicar em <b>Sair</b>.</li>
+      <li><b>Entrar:</b> clique em <b>Entrar no banco</b>, no topo (ao lado de Carregar planilha). O e-mail do time (<code>divergencias@assai.com</code>) já vem preenchido: digite a senha e clique em Entrar. É preciso fazer isso uma vez em cada computador: o login fica guardado no navegador até alguém clicar em <b>Sair</b>.</li>
       <li><b>Todo dia:</b> clique em <b>Carregar planilha</b> com a base do dia. As senhas novas entram, as que já estavam são atualizadas e nada é contado duas vezes (a chave é senha + NF). Basta uma pessoa carregar.</li>
       <li>O que você muda é gravado na hora. O painel busca o que os colegas mudaram a cada 15 segundos. Passe o mouse no Status para ver quem fez a última alteração da NF.</li>
       <li>Sem internet, as alterações ficam guardadas no navegador e são enviadas quando a conexão voltar (o quadro do banco mostra quantas estão aguardando).</li>
@@ -196,7 +196,7 @@
       <li><b>Importar arquivo…</b>: traz para o banco um backup ou o antigo <code>historico-senhas.json</code> do OneDrive. Em cada senha vale a alteração mais recente; nada é apagado.</li>
       <li>Com o banco conectado, use <b>Base carregada</b> ou <b>Histórico completo</b>, na linha dos filtros, para escolher o que o Painel e a Base detalhada mostram.</li>
       <li>Uma senha que estava divergente e na base seguinte aparece como FINALIZADO com <code>FIM DIV</code> preenchido é marcada como resolvida no histórico automaticamente.</li>
-      <li><b>Configuração (uma vez só):</b> rode o arquivo <code>supabase/schema.sql</code> no SQL Editor do Supabase, crie um usuário para cada pessoa em Authentication &gt; Users e desligue "Allow new users to sign up". O endereço e a chave pública do projeto ficam em <code>SUPABASE</code> no <code>CONFIG</code>.</li>
+      <li><b>Configuração (uma vez só):</b> rode o arquivo <code>supabase/schema.sql</code> no SQL Editor do Supabase, crie o usuário do time (<code>divergencias@assai.com</code>) em Authentication &gt; Users e desligue "Allow new users to sign up". O endereço e a chave pública do projeto ficam em <code>SUPABASE</code> no <code>CONFIG</code>.</li>
       <li>Se o painel ficar uma semana sem ninguém usar, o Supabase gratuito pausa o projeto. Para voltar, entre em supabase.com e clique em <b>Restore</b> no projeto.</li>
     </ul>
     <h3>Colunas da planilha</h3>
