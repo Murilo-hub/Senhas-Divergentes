@@ -13,6 +13,33 @@ const CONFIG = {
   CHAVE_TIPOS: 'painel-senhas-tipos',           // nome do espaço onde o navegador guarda os tipos escolhidos à mão
   CHAVE_CHAMADOS: 'painel-senhas-chamados',     // nome do espaço onde o navegador guarda os números de chamado digitados
   CHAVE_REGRAS: 'painel-senhas-regras-fornecedor', // nome do espaço onde o navegador guarda as regras "fornecedor -> categoria"
+  CHAVE_STATUS: 'painel-senhas-status',         // nome do espaço onde o navegador guarda o status de cada NF e os horários
+  // PRAZOS (em minutos), contados do início do chamado: INI DIV da planilha; sem ele, a hora em que o status virou "Chamado aberto"; sem ele, a agenda.
+  PRAZO_PRIORIDADE: { com: 60, tri: 180, nd: 60 }, // sem solução depois disso: pedir prioridade e mandar e-mail (nd = tipo não informado)
+  AVISO_ANTES_MIN: 15,          // tantos minutos antes do prazo a NF fica amarela ("vence em breve")
+  PRAZO_RECUSA_MIN: 60,         // depois de pedir prioridade: sem solução em tanto tempo, recusar a NF
+  AVISO_RECUSA_MIN: 30,         // depois de pedir prioridade: a partir daqui já mostra "avaliar recusa"
+  // E-mail de prioridade (abre no Outlook ou no programa de e-mail padrão). Separe vários endereços com vírgula.
+  EMAIL_PRIORIDADE: {
+    com: { para: '', cc: '' },  // responsáveis pelos chamados comerciais
+    tri: { para: '', cc: '' }   // responsáveis pelos chamados tributários
+  },
+  // Motivo padronizado da divergência, pelo texto de DIVERGÊNCIA DOS PEDIDOS (minúsculo, sem acento). Vale o primeiro que casar.
+  MOTIVOS: [
+    ['ICMS / ST',          '\\b(icms|st|substituicao tributaria|mva|difal|fcp)\\b'],
+    ['IPI',                '\\bipi\\b'],
+    ['PIS / COFINS',       '\\b(pis|cofins)\\b'],
+    ['NCM',                '\\bncm\\b'],
+    ['CFOP',               '\\bcfop\\b'],
+    ['CST / CSOSN',        '\\b(cst|csosn)\\b'],
+    ['Outros tributos',    '\\b(aliquot\\w*|tribut\\w*|imposto\\w*|fiscal)\\b'],
+    ['Preço',              '\\b(preco\\w*|valor\\w*|custo|desconto\\w*|bonifica\\w*)\\b'],
+    ['Quantidade',         '\\b(quantidade\\w*|qtd\\w*|falta\\w*|sobra\\w*|excesso|a mais|a menos)\\b'],
+    ['Produto / cadastro', '\\b(produto\\w*|item|itens|sku|ean|codigo|embalage\\w*|unidade|fator|cadastr\\w*)\\b'],
+    ['Pedido',             '\\b(pedido\\w*|cancelad\\w*)\\b'],
+    ['Prazo de pagamento', '\\b(prazo|condicao|pagamento|vencimento|boleto)\\b']
+  ],
+  REINCIDENCIA_MIN: 3,          // fornecedor com o mesmo motivo tantas vezes (no período filtrado) aparece como reincidente
   // Turnos do filtro do topo, pela hora da DATA/HORA AGENDA. Quando fim é menor que ini, o turno passa da meia-noite.
   TURNOS: [
     { nome: '1º turno (06h às 14h)', ini: 6,  fim: 14 },
@@ -75,7 +102,7 @@ const CONFIG = {
   },
   // Se o texto de "DIVERGÊNCIA DOS PEDIDOS" casar com esta expressão (minúsculo, sem acento), a senha é tributária. O resto é comercial.
   REGEX_TRIBUTARIA: '\\b(tribut\\w*|aliquot\\w*|imposto\\w*|icms|ipi|pis|cofins|ncm|cfop|cst|fiscal)\\b',
-  MAX_LINHAS_BASE: 300,         // limite de linhas desenhadas na Base detalhada
+  MAX_LINHAS_BASE: 300,         // linhas desenhadas de cada vez na Base detalhada (o botão "Mostrar mais" desenha mais)
   CSV_INICIAL: '',              // cole aqui um CSV para o painel já abrir com seus dados (senão abre vazio, esperando a planilha)
   // nome interno : nomes aceitos no cabeçalho (sem acento, minúsculo, sem símbolos: "DATA/HORA AGENDA" vira "data hora agenda")
   COLUNAS: {
@@ -142,12 +169,63 @@ function aplicar(d){
   d.categoria = d.categoriaManual || plan || d.categoriaAuto?.cat || d.categoriaArquivo || SEM_CATEGORIA;
   d.categoriaOrigem = d.categoriaManual ? 'manual' : plan ? 'planilha' : d.categoriaAuto?.origem || (d.categoriaArquivo ? 'planilha' : '');
   d.chamado = d.chamadoManual || '';
-  d.resolucao = d.resolucaoArquivo || d.resolucaoManual || null;
+  // Status: o escolhido na tela; FIM DIV da planilha encerra como Resolvida (a não ser que alguém tenha marcado recusa)
+  d.status = FINAIS.has(d.statusManual) ? d.statusManual : d.resolucaoArquivo || d.resolucaoManual ? 'resolvida' : (d.statusManual || (d.chamado ? 'chamado' : ''));
+  d.resolucao = FINAIS.has(d.status) ? (d.resolucaoManual || d.resolucaoArquivo || null) : null; // encerramento (resolvida ou recusada)
   d.deArquivo = !!d.resolucaoArquivo;
+  d.motivo = motivoDe(d.descricao);
   return d;
 }
+const STATUS = { '': 'Sem chamado', chamado: 'Chamado aberto', prioridade: 'Prioridade solicitada', resolvida: 'Resolvida', recusa_total: 'Recusa total', recusa_parcial: 'Recusa parcial' };
+const FINAIS = new Set(['resolvida', 'recusa_total', 'recusa_parcial']);
+const recusada = d => d.status === 'recusa_total' || d.status === 'recusa_parcial';
+const RE_MOTIVOS = CONFIG.MOTIVOS.map(([nome, re]) => [nome, new RegExp(re)]);
+function motivoDe(t){ const n = norm(t); if(!n) return 'Sem descrição'; return RE_MOTIVOS.find(([, re]) => re.test(n))?.[0] || 'Outros'; }
+const inicioPrazo = d => d.inicio || d.chamadoEm || d.agenda; // de quando o prazo é contado
+const minutos = m => m < 60 ? Math.round(m) + ' min' : hh(m / 60);
+const NIVEL_ORDEM = { recusar: 0, vencido: 1, avaliar: 2, atencao: 3, aguardando: 4, ok: 5, '': 6, fim: 7 };
+function prazo(d, agora = new Date()){ // em que pé está o prazo da NF: nível (cor) e texto
+  if(d.resolucao || FINAIS.has(d.status)) return { nivel: 'fim', texto: '' };
+  if(d.status === 'prioridade'){
+    const t0 = d.prioridadeEm || agora, dec = (agora - t0) / 6e4, falta = CONFIG.PRAZO_RECUSA_MIN - dec;
+    if(falta <= 0) return { nivel: 'recusar', texto: 'Recusar NF', det: 'prioridade pedida há ' + minutos(dec) };
+    return { nivel: dec >= CONFIG.AVISO_RECUSA_MIN ? 'avaliar' : 'aguardando', texto: dec >= CONFIG.AVISO_RECUSA_MIN ? 'Avaliar recusa' : 'Aguardando prioridade', det: 'recusar em ' + minutos(falta) };
+  }
+  const ini = inicioPrazo(d); if(!ini) return { nivel: '', texto: '' };
+  const falta = CONFIG.PRAZO_PRIORIDADE[d.tipo] - (agora - ini) / 6e4;
+  if(falta <= 0) return { nivel: 'vencido', texto: 'Pedir prioridade', det: 'vencido há ' + minutos(-falta) };
+  return { nivel: falta <= CONFIG.AVISO_ANTES_MIN ? 'atencao' : 'ok', texto: 'No prazo', det: 'vence em ' + minutos(falta) };
+}
+function definirStatus(d, s){ // muda o status e guarda os horários de cada etapa
+  const agora = new Date(); d.statusManual = s || null;
+  if(s === 'chamado' || s === 'prioridade') d.chamadoEm = d.chamadoEm || agora;
+  if(s === 'prioridade') d.prioridadeEm = d.prioridadeEm || agora; else if(!FINAIS.has(s)) d.prioridadeEm = null;
+  d.resolucaoManual = FINAIS.has(s) ? (d.resolucaoManual || agora) : null;
+  const sv = lerSalvo(CONFIG.CHAVE_STATUS), res = lerSalvo(), iso = x => x ? x.toISOString() : null;
+  if(s || d.chamadoEm) sv[d.id] = { s: s || '', c: iso(d.chamadoEm), p: iso(d.prioridadeEm) }; else delete sv[d.id];
+  if(d.resolucaoManual) res[d.id] = iso(d.resolucaoManual); else delete res[d.id];
+  gravarSalvo(sv, CONFIG.CHAVE_STATUS); gravarSalvo(res);
+}
+function seletorStatus(d){
+  const ops = d.deArquivo && !FINAIS.has(d.statusManual) ? ['resolvida', 'recusa_total', 'recusa_parcial'] : Object.keys(STATUS);
+  if(!ops.includes(d.status)) ops.unshift(d.status);
+  const tit = d.status === 'prioridade' && d.prioridadeEm ? 'Prioridade pedida em ' + dataHoraBR(d.prioridadeEm) : d.resolucao ? STATUS[d.status] + ' em ' + dataHoraBR(d.resolucao) : 'Status do chamado';
+  return `<select class="sel-status st-${d.status || 'sem'}" data-status="${esc(d.id)}" aria-label="Status da NF ${esc(d.nf)}" title="${esc(tit)}">`
+    + ops.map(v => `<option value="${v}"${v === d.status ? ' selected' : ''}>${STATUS[v]}</option>`).join('') + '</select>';
+}
+function emailPrioridade(d){ // abre o e-mail de prioridade já preenchido
+  const dest = CONFIG.EMAIL_PRIORIDADE[d.tipo] || CONFIG.EMAIL_PRIORIDADE.com || {}, ini = inicioPrazo(d);
+  const assunto = `PRIORIDADE - Chamado ${d.chamado || '(sem número)'} - NF ${d.nf} - ${d.fornecedor} - divergência ${NOME_TIPO[d.tipo].toLowerCase()}`;
+  const corpo = ['Prezados,', '',
+    `Solicitamos prioridade no chamado ${d.chamado || '(sem número)'}, referente à divergência ${NOME_TIPO[d.tipo].toLowerCase()} abaixo, que segue sem solução` + (ini ? ` há ${minutos((new Date() - ini) / 6e4)}.` : '.'), '',
+    'Senha: ' + d.senha, 'NF: ' + d.nf, 'Fornecedor: ' + d.fornecedor, 'Categoria: ' + (d.categoria === SEM_CATEGORIA ? '-' : d.categoria),
+    'Agenda: ' + (dataHoraBR(d.agenda) || '-'), 'Divergência: ' + (d.descricao || '-'), '',
+    `Sem retorno em até ${CONFIG.PRAZO_RECUSA_MIN} minutos, a NF será recusada.`, '', 'Atenciosamente,'].join('\n');
+  const q = [dest.cc && 'cc=' + encodeURIComponent(dest.cc), 'subject=' + encodeURIComponent(assunto), 'body=' + encodeURIComponent(corpo)].filter(Boolean).join('&');
+  const a = document.createElement('a'); a.href = 'mailto:' + encodeURIComponent(dest.para || '').replace(/%2C/gi, ',') + '?' + q; a.click();
+}
 const inicioDe = d => d.inicio || d.agenda; // conta do INI DIV da planilha; sem ele, da data/hora da agenda
-const horas = d => inicioDe(d) && d.resolucao ? Math.max(0, (d.resolucao - inicioDe(d)) / 36e5) : null; // tempo de resolução em horas
+const horas = d => inicioDe(d) && d.resolucao ? Math.max(0, (d.resolucao - inicioDe(d)) / 36e5) : null; // tempo até encerrar (resolvida ou recusada), em horas
 const hh = n => { // duração em horas -> "10:54" (horas:minutos); a partir de 24 h, com os dias na frente: "8d 18:00"
   const m = Math.round(n * 60), d = Math.floor(m / 1440), r = m % 1440;
   const t = String(Math.floor(r / 60)).padStart(2, '0') + ':' + String(r % 60).padStart(2, '0');
@@ -273,7 +351,7 @@ async function carregarArquivo(f){
 }
 
 /* ===== 2) FILTROS DO TOPO (período, turno e categoria) ===== */
-const FILTRO = { periodo: 'tudo', de: null, ate: null, turno: '', cat: '' };
+const FILTRO = { periodo: 'tudo', de: null, ate: null, turno: '', cat: '', sit: '', forn: '' };
 const diaSoma = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 function lerFiltros(){ // lê os campos do topo e calcula o intervalo de datas (de: inclusive, ate: exclusive)
   const p = $('fPeriodo').value, hoje = diaSoma(new Date(), 0), amanha = diaSoma(hoje, 1);
@@ -282,15 +360,21 @@ function lerFiltros(){ // lê os campos do topo e calcula o intervalo de datas (
     mes: [new Date(hoje.getFullYear(), hoje.getMonth(), 1), amanha], mesant: [new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1), new Date(hoje.getFullYear(), hoje.getMonth(), 1)],
     custom: [deCampo($('fDe').value), $('fAte').value ? diaSoma(deCampo($('fAte').value), 1) : null] };
   [FILTRO.de, FILTRO.ate] = faixas[p] || faixas.tudo;
-  Object.assign(FILTRO, { periodo: p, turno: $('fTurno').value, cat: $('fCat').value });
+  Object.assign(FILTRO, { periodo: p, turno: $('fTurno').value, cat: $('fCat').value, sit: $('fSit').value, forn: norm($('fForn').value) });
   $('fDatas').classList.toggle('hidden', p !== 'custom');
 }
-const filtroAtivo = () => !!(FILTRO.de || FILTRO.ate || FILTRO.turno !== '' || FILTRO.cat);
+const filtroAtivo = () => !!(FILTRO.de || FILTRO.ate || FILTRO.turno !== '' || FILTRO.cat || FILTRO.sit || FILTRO.forn);
+const SITUACOES = { // filtro "Situação": o que entra em cada opção
+  abertas: d => !d.resolucao, fora: d => ['vencido', 'avaliar', 'recusar'].includes(prazo(d).nivel), pedir: d => prazo(d).nivel === 'vencido',
+  recusar: d => ['avaliar', 'recusar'].includes(prazo(d).nivel), sem: d => !d.status, chamado: d => d.status === 'chamado', prioridade: d => d.status === 'prioridade',
+  resolvida: d => d.status === 'resolvida', recusa: recusada, recusa_total: d => d.status === 'recusa_total', recusa_parcial: d => d.status === 'recusa_parcial' };
 function noTurno(data, t){ const h = data.getHours(); return t.ini < t.fim ? h >= t.ini && h < t.fim : h >= t.ini || h < t.fim; }
 function passaFiltro(d){ // a senha entra nos filtros do topo? (datas e turno pela DATA/HORA AGENDA)
   const f = FILTRO, ag = d.agenda;
   if((f.de || f.ate) && (!ag || (f.de && ag < f.de) || (f.ate && ag >= f.ate))) return false;
   if(f.turno !== '' && (!ag || !noTurno(ag, CONFIG.TURNOS[+f.turno]))) return false;
+  if(f.sit && SITUACOES[f.sit] && !SITUACOES[f.sit](d)) return false;
+  if(f.forn && !norm(d.fornecedor).includes(f.forn)) return false;
   if(f.cat){
     if(f.cat === SEM_CATEGORIA) return d.categoria === SEM_CATEGORIA;
     if(f.cat.startsWith('grupo:')){ const g = f.cat.slice(6); return d.categoria === g || (CONFIG.CATEGORIAS[g] || []).includes(d.categoria); }
@@ -307,6 +391,7 @@ function desenharFiltros(){ // monta as listas de turno e categoria (mantém o q
     + Object.entries(CONFIG.CATEGORIAS).map(([g, l]) => `<optgroup label="${esc(g)}">${opc('grupo:' + g, 'Todo o grupo ' + g)}${l.map(x => opc(x, x)).join('')}</optgroup>`).join('')
     + (outras.length ? `<optgroup label="Outras">${outras.map(x => opc(x, x)).join('')}</optgroup>` : '');
   t.value = vt; c.value = [...c.options].some(o => o.value === vc) ? vc : '';
+  $('listaFiltroForn').innerHTML = [...new Set(todas().map(d => d.fornecedor))].sort().map(f => `<option value="${esc(f)}">`).join('');
   lerFiltros();
   $('fLimpar').classList.toggle('hidden', !filtroAtivo());
   $('fVisao').innerHTML = !BANCO.ok ? '' : '<span class="visao" role="group" aria-label="O que mostrar">'
@@ -319,17 +404,34 @@ function topFornecedores(tipo){ // fornecedores com mais senhas divergentes
   const dv = visiveis(), base = tipo === 'todos' ? dv : dv.filter(d => d.tipo === tipo), por = new Map();
   for(const d of base){ if(!por.has(d.fornecedor)) por.set(d.fornecedor, []); por.get(d.fornecedor).push(d); }
   return [...por].map(([nome, l]) => ({ nome, total: l.length, com: l.filter(x => x.tipo === 'com').length,
-      tri: l.filter(x => x.tipo === 'tri').length, nd: l.filter(x => x.tipo === 'nd').length,
+      tri: l.filter(x => x.tipo === 'tri').length, nd: l.filter(x => x.tipo === 'nd').length, rec: l.filter(recusada).length,
       cats: [...contar(l, x => x.categoria)].sort((a,b) => b[1] - a[1]).slice(0, 4) }))
     .sort((a,b) => b.total - a.total).slice(0, CONFIG.TOP_N);
 }
 function topCategoriasPorTempo(tipo){ // categorias com maior tempo de resolução (só senhas resolvidas)
   const por = new Map();
-  for(const d of visiveis()) if(d.tipo === tipo && horas(d) != null){ if(!por.has(d.categoria)) por.set(d.categoria, []); por.get(d.categoria).push(horas(d)); }
+  for(const d of visiveis()) if(d.tipo === tipo && d.status === 'resolvida' && horas(d) != null){ if(!por.has(d.categoria)) por.set(d.categoria, []); por.get(d.categoria).push(horas(d)); }
   return [...por].map(([nome, v]) => { v.sort((a,b) => a - b);
       const media = v.reduce((a,b) => a + b, 0) / v.length, mediana = v.length % 2 ? v[(v.length-1)/2] : (v[v.length/2-1] + v[v.length/2]) / 2;
       return { nome, n: v.length, valor: CONFIG.METRICA_TEMPO === 'mediana' ? mediana : media }; })
     .sort((a,b) => b.valor - a.valor).slice(0, CONFIG.TOP_N);
+}
+
+function tendencia(dv){ // divergências por dia (ou por semana, em períodos longos), separadas por tipo
+  const datas = dv.map(d => d.agenda).filter(Boolean); if(!datas.length) return null;
+  const ini = diaSoma(new Date(Math.min(...datas)), 0), fim = diaSoma(new Date(Math.max(...datas)), 0), dias = Math.round((fim - ini) / 864e5) + 1;
+  const semana = dias > 45, passo = semana ? 7 : 1, base = semana ? diaSoma(ini, -((ini.getDay() + 6) % 7)) : ini; // semanas começam na segunda
+  const n = Math.floor(Math.round((fim - base) / 864e5) / passo) + 1, col = Array.from({ length: n }, (_, i) => ({ dia: diaSoma(base, i * passo), com: 0, tri: 0, nd: 0, rec: 0 }));
+  for(const d of dv) if(d.agenda){ const i = Math.floor(Math.round((diaSoma(d.agenda, 0) - base) / 864e5) / passo); col[i][d.tipo]++; if(recusada(d)) col[i].rec++; }
+  // comparação: últimos 7 dias com os 7 anteriores (pela data mais recente dos dados)
+  const ult = dv.filter(d => d.agenda && d.agenda >= diaSoma(fim, -6)).length, ant = dv.filter(d => d.agenda && d.agenda >= diaSoma(fim, -13) && d.agenda < diaSoma(fim, -6)).length;
+  return { col, semana, ult, ant, fim };
+}
+function motivos(dv){ // motivos mais frequentes e fornecedores reincidentes (mesmo motivo várias vezes)
+  const porMotivo = [...contar(dv, d => d.motivo)].sort((a, b) => b[1] - a[1]), par = new Map();
+  for(const d of dv){ if(d.motivo === 'Sem descrição') continue; const k = d.fornecedor + '\u0000' + d.motivo, x = par.get(k) || { forn: d.fornecedor, motivo: d.motivo, n: 0, ultima: null, rec: 0 };
+    x.n++; if(recusada(d)) x.rec++; if(d.agenda && (!x.ultima || d.agenda > x.ultima)) x.ultima = d.agenda; par.set(k, x); }
+  return { porMotivo, reincidentes: [...par.values()].filter(x => x.n >= CONFIG.REINCIDENCIA_MIN).sort((a, b) => b.n - a.n).slice(0, CONFIG.TOP_N) };
 }
 
 /* ===== 3b) NOTAS FISCAIS (XML de NF-e) ===== */
@@ -524,8 +626,8 @@ function desenharNotas(){
 const BANCO = { handle: null, ok: false, nome: '', lido: 0, atualizado: null, timer: null, erro: '' }; // erro: última falha, fica visível até dar certo
 const temSuporteBanco = () => 'showOpenFilePicker' in window;
 const CAMPOS_ARQUIVO = ['senha','nf','cd','status','fornecedor','cnpj','categoriaArquivo','tipoArquivo','tipoPorColuna','agenda','inicio','resolucaoArquivo','descricao'];
-const CAMPOS_MANUAIS = ['tipoManual','categoriaManual','resolucaoManual','chamadoManual'];
-const CAMPOS_DATA = ['agenda','inicio','resolucaoArquivo','resolucaoManual','primeiraVez','ultimaVez'];
+const CAMPOS_MANUAIS = ['tipoManual','categoriaManual','resolucaoManual','chamadoManual','statusManual','chamadoEm','prioridadeEm'];
+const CAMPOS_DATA = ['agenda','inicio','resolucaoArquivo','resolucaoManual','chamadoEm','prioridadeEm','primeiraVez','ultimaVez'];
 // Guarda o "endereço" do arquivo escolhido no navegador, para reconectar sem procurar de novo
 function idb(modo, fn){ return new Promise((ok, erro) => { const r = indexedDB.open('painel-senhas', 1);
   r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onerror = () => erro(r.error);
@@ -644,7 +746,7 @@ function desenharBanco(msg = BANCO.erro){ // indicador pequeno no topo; clicar a
   let estado, rotulo, corpo;
   if(!temSuporteBanco()){ estado = 'off'; rotulo = 'Sem banco'; corpo = '<p><b>Banco de dados indisponível neste navegador.</b> Abra o painel no Edge ou no Chrome para guardar o histórico.</p>'; }
   else if(BANCO.ok){
-    const n = HIST.size, ab = [...HIST.values()].filter(d => !d.resolucao).length;
+    const n = HIST.size, ab = [...HIST.values()].filter(d => !d.resolucao).length; // em aberto = não encerradas
     estado = 'on'; rotulo = 'Banco conectado';
     corpo = `<p><b>${esc(BANCO.nome)}</b><br>${n} ${n === 1 ? 'senha' : 'senhas'} no histórico, ${ab} em aberto.` + (BANCO.atualizado ? `<br><span class="vazio">Gravado ${dataHoraBR(BANCO.atualizado)}</span>` : '') + '</p>'
       + '<div class="pop-acoes">' + btn('bTrocar', 'Trocar arquivo') + '</div>';
@@ -660,22 +762,34 @@ function desenharBanco(msg = BANCO.erro){ // indicador pequeno no topo; clicar a
 }
 
 /* ===== 4) DESENHO DA TELA ===== */
-function redesenhar(){ recalcularCategorias(); desenharBanco(); desenharFiltros(); desenharPainel(); desenharBase(); desenharNotas(); desenharCategorias(); }
+function redesenhar(){ recalcularCategorias(); desenharBanco(); desenharFiltros(); desenharAlertas(); desenharPainel(); desenharBase(); desenharNotas(); desenharCategorias(); }
+function desenharAlertas(){ // faixa de alerta no topo e contador no título da aba do navegador (vale para todas as NFs, sem filtros)
+  const ab = todas().filter(d => !d.resolucao), cont = n => ab.filter(d => prazo(d).nivel === n).length;
+  const rec = cont('recusar'), ven = cont('vencido'), aval = cont('avaliar'), ate = cont('atencao'), urg = rec + ven + aval;
+  document.title = (urg ? '(' + urg + ') ' : '') + 'Senhas divergentes';
+  const item = (n, sit, txt, cls) => n ? `<button type="button" class="alerta-item ${cls}" data-sit="${sit}"><b>${n}</b> ${txt}</button>` : '';
+  $('alertas').innerHTML = !(urg + ate) ? '' : `<span class="alerta-titulo">${urg ? 'Atenção agora' : 'Vencem em breve'}</span>`
+    + item(rec, 'recusar', rec === 1 ? 'NF para recusar' : 'NFs para recusar', 'recusar')
+    + item(ven, 'pedir', ven === 1 ? 'NF passou do prazo: pedir prioridade' : 'NFs passaram do prazo: pedir prioridade', 'vencido')
+    + item(aval, 'recusar', (aval === 1 ? 'NF' : 'NFs') + ' com prioridade há mais de ' + minutos(CONFIG.AVISO_RECUSA_MIN) + ': avaliar recusa', 'avaliar')
+    + item(ate, 'abertas', (ate === 1 ? 'NF vence' : 'NFs vencem') + ' em até ' + minutos(CONFIG.AVISO_ANTES_MIN), 'atencao');
+}
 function linha(rotulo, valor, max, texto, cls, extra){ // uma barra de ranking
   return `<div class="row"><div class="top"><span title="${esc(rotulo)}">${esc(rotulo)}</span><b>${texto}</b></div>
     <div class="tr"><div class="fl ${cls}" style="width:${max ? valor / max * 100 : 0}%"></div></div>${extra || ''}</div>`;
 }
 function desenharPainel(){
-  const dv = visiveis(), abertas = dv.filter(d => horas(d) == null).length, res = dv.filter(d => horas(d) != null);
+  const dv = visiveis(), abertas = dv.filter(d => !d.resolucao).length, res = dv.filter(d => d.status === 'resolvida' && horas(d) != null);
+  const fora = dv.filter(d => ['vencido', 'avaliar', 'recusar'].includes(prazo(d).nivel)).length, rec = dv.filter(recusada).length;
   $('estadoVazio').classList.toggle('hidden', todas().length > 0);
   $('avisoCat').textContent = temCategoria() ? '' : 'Nenhuma NF tem categoria ainda. Escolha a categoria de cada NF na Base detalhada. Os rankings por fornecedor já funcionam.';
   const med = res.length ? res.reduce((a,d) => a + horas(d), 0) / res.length : 0;
-  $('kpis').innerHTML = [[dv.length,'NFs divergentes'],[dv.filter(d => d.tipo === 'com').length,'comerciais'],
-    [dv.filter(d => d.tipo === 'tri').length,'tributárias'],
-    [abertas,'ainda abertas'],[res.length ? hh(med) : '–','tempo médio de resolução'],
-    [dv.filter(d => d.tipo === 'nd').length,'tipo não informado']]
-    .filter(([v,t], i) => i < 5 || v > 0) // "tipo não informado" só aparece quando existe
-    .map(([v,t]) => `<div class="kpi"><b>${v}</b><span>${t}</span></div>`).join('');
+  $('kpis').innerHTML = [[dv.length, 'NFs divergentes', 'pri'], [dv.filter(d => d.tipo === 'com').length, 'comerciais', 'com'],
+    [dv.filter(d => d.tipo === 'tri').length, 'tributárias', 'tri'], [abertas, 'em aberto', 'mu'],
+    [fora, 'fora do prazo', 'abx', fora ? 'alerta' : '', 'fora'], [rec, 'recusadas', 'abx', '', 'recusa'],
+    [res.length ? hh(med) : '–', 'tempo médio de resolução', 'ok'], [dv.filter(d => d.tipo === 'nd').length, 'tipo não informado', 'mu']]
+    .filter(([v], i) => i < 7 || v > 0) // "tipo não informado" só aparece quando existe
+    .map(([v, t, cor, cls, sit]) => `<${sit ? `button type="button" data-sit="${sit}"` : 'div'} class="kpi ${cls || ''}" style="--cor:var(--${cor})"><b>${v}</b><span>${t}</span></${sit ? 'button' : 'div'}>`).join('');
 
   const tipo = $('filtroTipo').value, f = topFornecedores(tipo), maxF = f[0]?.total || 0;
   $('pForn').innerHTML = f.length ? f.map(x => {
@@ -684,7 +798,7 @@ function desenharPainel(){
       ? `<div class="tr" style="display:flex;width:${x.total / maxF * 100}%">` + [['com', x.com], ['tri', x.tri], ['nd', x.nd]]
           .filter(([, n]) => n).map(([c, n]) => `<div class="fl ${c}" style="width:${n / x.total * 100}%;border-radius:0"></div>`).join('') + '</div>'
       : `<div class="tr"><div class="fl ${tipo}" style="width:${x.total / maxF * 100}%"></div></div>`;
-    const partes = tipo !== 'todos' ? '' : '<span class="por-tipo">' + [['com', x.com, 'com.'], ['tri', x.tri, 'trib.'], ['nd', x.nd, 'sem tipo']]
+    const partes = '<span class="por-tipo">' + (tipo !== 'todos' ? [] : [['com', x.com, 'com.'], ['tri', x.tri, 'trib.'], ['nd', x.nd, 'sem tipo']]).concat([['rec', x.rec, x.rec === 1 ? 'recusa' : 'recusas']])
       .filter(([, n]) => n).map(([c, n, t]) => `<i class="${c}">${n} ${t}</i>`).join('') + '</span>';
     return `<div class="row"><div class="top"><span title="${esc(x.nome)}">${esc(x.nome)}</span><span class="dir">${partes}<b>${x.total}</b></span></div>${barra}${chips}</div>`;
   }).join('') : '<p class="vazio">Sem dados para este filtro.</p>';
@@ -697,23 +811,59 @@ function desenharPainel(){
     const c = topCategoriasPorTempo(t), mx = c[0]?.valor || 0;
     $(id).innerHTML = c.length ? c.map(x => linha(x.nome, x.valor, mx, hh(x.valor), t,
       `<div class="vazio" style="font-size:12px">${x.n} ${x.n === 1 ? 'resolvida' : 'resolvidas'}</div>`)).join('')
-      : '<p class="vazio">' + 'Nenhuma divergência resolvida deste tipo ainda. Marque “Resolvido” na Base detalhada.' + '</p>';
+      : '<p class="vazio">' + 'Nenhuma divergência resolvida deste tipo ainda. Mude o Status para “Resolvida” na Base detalhada.' + '</p>';
   }
+  desenharTendencia(dv); desenharMotivos(dv);
 }
+function desenharTendencia(dv){ // gráfico de colunas: divergências por dia ou semana, por tipo
+  const t = tendencia(dv);
+  if(!t){ $('pTend').innerHTML = '<p class="vazio">Sem datas de agenda para montar o gráfico.</p>'; $('resumoTend').textContent = ''; return; }
+  const mx = Math.max(1, ...t.col.map(c => c.com + c.tri + c.nd)), passoRot = Math.ceil(t.col.length / 12);
+  const dif = t.ant ? Math.round((t.ult - t.ant) / t.ant * 100) : null;
+  $('resumoTend').innerHTML = `Últimos 7 dias (até ${dataBR(t.fim)}): <b>${t.ult}</b> · 7 dias anteriores: <b>${t.ant}</b>`
+    + (dif == null ? '' : ` <span class="var ${dif > 0 ? 'sobe' : dif < 0 ? 'desce' : ''}">${dif > 0 ? '▲ +' : dif < 0 ? '▼ ' : ''}${dif}%</span>`);
+  $('pTend').innerHTML = `<div class="colunas" style="--n:${t.col.length}">` + t.col.map((c, i) => { const tot = c.com + c.tri + c.nd;
+    const rot = (t.semana ? 'Semana de ' : '') + dataBR(c.dia), dica = `${rot}: ${tot} (${c.com} com., ${c.tri} trib.${c.nd ? ', ' + c.nd + ' sem tipo' : ''}${c.rec ? ', ' + c.rec + ' recusadas' : ''})`;
+    return `<div class="coluna" title="${esc(dica)}">${tot ? `<b>${tot}</b>` : ''}<div class="pilha" style="height:${tot / mx * 80}%">`
+      + [['tri', c.tri], ['nd', c.nd], ['com', c.com]].filter(([, n]) => n).map(([k, n]) => `<i class="${k}" style="flex:${n}"></i>`).join('')
+      + `</div><span class="rot">${i % passoRot ? '' : c.dia.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span></div>`; }).join('') + '</div>'
+    + `<p class="vazio legenda-mini">${t.semana ? 'Por semana' : 'Por dia'}, pela DATA/HORA AGENDA. Azul: comerciais. Âmbar: tributárias.</p>`;
+}
+function desenharMotivos(dv){ // motivos mais frequentes (com % acumulado) e fornecedores reincidentes
+  const { porMotivo, reincidentes } = motivos(dv), tot = dv.length, mx = porMotivo[0]?.[1] || 0; let acum = 0;
+  $('pMotivos').innerHTML = porMotivo.length ? porMotivo.slice(0, CONFIG.TOP_N).map(([m, n]) => { acum += n;
+    return linha(m, n, mx, `${n} <small>${Math.round(n / tot * 100)}% · acum. ${Math.round(acum / tot * 100)}%</small>`, 'mot'); }).join('') : '<p class="vazio">Sem divergências.</p>';
+  $('pReinc').innerHTML = reincidentes.length ? reincidentes.map(x => `<button type="button" class="reinc" data-forn="${esc(x.forn)}" title="Filtrar por este fornecedor">`
+    + `<span class="r-forn">${esc(x.forn)}</span><span class="r-mot">${esc(x.motivo)}</span><b>${x.n}×</b>`
+    + `<span class="r-det">${x.rec ? x.rec + (x.rec === 1 ? ' recusa · ' : ' recusas · ') : ''}última ${dataBR(x.ultima)}</span></button>`).join('')
+    : `<p class="vazio">Nenhum fornecedor com o mesmo motivo ${CONFIG.REINCIDENCIA_MIN} vezes ou mais neste período.</p>`;
+}
+let LIMITE_BASE = CONFIG.MAX_LINHAS_BASE; // quantas linhas a Base detalhada desenha agora ("Mostrar mais" aumenta)
 function desenharBase(){
   const q = norm($('busca').value), agora = new Date();
-  const vs = visiveis(), l = vs.filter(d => !q || norm([d.senha, d.nf, d.fornecedor, d.categoria, d.descricao, d.chamado, NOME_TIPO[d.tipo]].join(' ')).includes(q));
-  $('contaBase').textContent = l.length + ' de ' + vs.length + ' NFs divergentes' + (VISAO === 'hist' && BANCO.ok ? ' (histórico completo)' : '') + (filtroAtivo() ? ' (com filtros)' : '') + (l.length > CONFIG.MAX_LINHAS_BASE ? ' (mostrando ' + CONFIG.MAX_LINHAS_BASE + ')' : '');
-  $('corpo').innerHTML = l.slice(0, CONFIG.MAX_LINHAS_BASE).map(d => { const h = horas(d);
-    const tempo = h != null ? hh(h) : (inicioDe(d) ? '<span class="vazio">' + hh(Math.max(0, (agora - inicioDe(d)) / 36e5)) + ' em aberto</span>' : '');
-    return `<tr class="${d.resolucao ? '' : 'aberta'}"><td><input type="checkbox" data-id="${esc(d.id)}" ${d.resolucao ? 'checked' : ''} ${d.deArquivo ? 'disabled' : ''} aria-label="Marcar como resolvido"></td>
-    <td>${esc(d.senha)}</td><td>${esc(d.nf)}</td><td>${d.tipoArquivo === 'nd' ? seletorTipo(d) : `<span class="tag ${d.tipo}" title="${esc((d.descricao ? 'Divergência: ' + d.descricao + '\n' : '') + (d.tipoPorColuna ? 'Definido pelas colunas INI/FIM DIV (divergência sem texto)' : d.tipo === 'nd' ? 'DIVERGÊNCIA DOS PEDIDOS e colunas INI/FIM DIV vazias' : 'Definido pelo texto de DIVERGÊNCIA DOS PEDIDOS'))}">${NOME_TIPO[d.tipo]}${d.tipoPorColuna ? '*' : ''}</span>`}</td>
-    <td>${esc(d.fornecedor)}</td><td>${seletorCategoria(d)}</td><td>${dataHoraBR(d.agenda)}</td><td>${d.resolucao ? dataHoraBR(d.resolucao) : '<span class="selo-aberta">Aberta</span>'}</td>
+  const vs = visiveis(), l = vs.filter(d => !q || norm([d.senha, d.nf, d.fornecedor, d.categoria, d.descricao, d.chamado, d.motivo, STATUS[d.status], NOME_TIPO[d.tipo]].join(' ')).includes(q))
+    .map(d => ({ d, p: prazo(d, agora) })) // mais urgentes primeiro; encerradas por último, as mais recentes antes
+    .sort((a, b) => NIVEL_ORDEM[a.p.nivel] - NIVEL_ORDEM[b.p.nivel] || (a.p.nivel === 'fim' ? (b.d.resolucao || 0) - (a.d.resolucao || 0) : (inicioPrazo(a.d) || 0) - (inicioPrazo(b.d) || 0)));
+  const mostra = Math.min(l.length, LIMITE_BASE);
+  $('contaBase').textContent = l.length + ' de ' + vs.length + ' NFs divergentes' + (VISAO === 'hist' && BANCO.ok ? ' (histórico completo)' : '') + (filtroAtivo() ? ' (com filtros)' : '') + (l.length > mostra ? ' · mostrando ' + mostra : '');
+  $('maisBase').classList.toggle('hidden', l.length <= mostra);
+  $('maisBase').textContent = 'Mostrar mais ' + Math.min(CONFIG.MAX_LINHAS_BASE, l.length - mostra) + ' de ' + (l.length - mostra) + ' restantes';
+  $('corpo').innerHTML = l.slice(0, mostra).map(({ d, p }) => { const h = horas(d);
+    const tempo = h != null ? `<span class="tempo">${hh(h)}</span>` : (inicioDe(d) ? `<span class="tempo">${hh(Math.max(0, (agora - inicioDe(d)) / 36e5))}</span><span class="prazo-det">em aberto</span>` : '');
+    const celPrazo = p.nivel === 'fim' ? `<span class="vazio">${STATUS[d.status]}${d.resolucao ? ' ' + dataHoraBR(d.resolucao) : ''}</span>`
+      : !p.nivel ? '<span class="vazio">Sem data</span>'
+      : `<span class="prazo ${p.nivel}">${p.texto}</span><span class="prazo-det">${p.det}</span>`
+        + (p.nivel === 'vencido' ? `<button type="button" class="btn-prioridade" data-prioridade="${esc(d.id)}" title="Muda o status para Prioridade solicitada e abre o e-mail">Pedir prioridade ✉</button>` : '')
+        + (d.status === 'prioridade' ? `<button type="button" class="link btn-email" data-email="${esc(d.id)}" title="Abrir o e-mail de prioridade de novo">✉ e-mail</button>` : '');
+    return `<tr class="${d.resolucao ? (recusada(d) ? 'recusada' : '') : 'aberta nv-' + (p.nivel || 'sem')}"><td>${seletorStatus(d)}</td>
+    <td>${esc(d.senha)}</td><td>${esc(d.nf)}</td><td>${d.tipoArquivo === 'nd' ? seletorTipo(d) : `<span class="tag ${d.tipo}" title="${esc((d.descricao ? 'Divergência: ' + d.descricao + '\nMotivo: ' + d.motivo + '\n' : '') + (d.tipoPorColuna ? 'Definido pelas colunas INI/FIM DIV (divergência sem texto)' : d.tipo === 'nd' ? 'DIVERGÊNCIA DOS PEDIDOS e colunas INI/FIM DIV vazias' : 'Definido pelo texto de DIVERGÊNCIA DOS PEDIDOS'))}">${NOME_TIPO[d.tipo]}${d.tipoPorColuna ? '*' : ''}</span>`}</td>
+    <td>${esc(d.fornecedor)}</td><td>${seletorCategoria(d)}</td><td>${dataHoraBR(d.agenda)}</td><td class="cel-prazo">${celPrazo}</td>
     <td>${tempo}</td><td><input type="text" class="in-chamado" inputmode="numeric" data-chamado="${esc(d.id)}" value="${esc(d.chamado)}" placeholder="Nº do chamado" aria-label="Número do chamado da NF ${esc(d.nf)}"></td></tr>`; }).join('');
 }
 function aplicarSalvosLocais(d){ // devolve o que este navegador já tinha marcado (vale também sem banco de dados)
-  const res = lerSalvo(), cats = lerSalvo(CONFIG.CHAVE_CATEGORIAS), tps = lerSalvo(CONFIG.CHAVE_TIPOS), chs = lerSalvo(CONFIG.CHAVE_CHAMADOS);
+  const res = lerSalvo(), cats = lerSalvo(CONFIG.CHAVE_CATEGORIAS), tps = lerSalvo(CONFIG.CHAVE_TIPOS), chs = lerSalvo(CONFIG.CHAVE_CHAMADOS), sts = lerSalvo(CONFIG.CHAVE_STATUS);
   if(chs[d.id]) d.chamadoManual = chs[d.id];
+  if(sts[d.id]){ d.statusManual = sts[d.id].s || null; d.chamadoEm = sts[d.id].c ? new Date(sts[d.id].c) : null; d.prioridadeEm = sts[d.id].p ? new Date(sts[d.id].p) : null; }
   if(res[d.id]) d.resolucaoManual = new Date(res[d.id]);
   if(cats[d.id]) d.categoriaManual = cats[d.id];
   if(NOME_TIPO[tps[d.id]] && tps[d.id] !== 'nd') d.tipoManual = tps[d.id];
@@ -732,7 +882,7 @@ async function definirDados(registros, origem, real = false){ // real: veio de u
   if(real && BANCO.ok) await gravarBanco();
 }
 function alterou(d){ // depois de uma escolha na tela: recalcula, guarda no banco e redesenha o painel
-  marcar(d); aplicar(d); if(BANCO.ok && HIST.has(d.id)) salvarBanco(); desenharPainel(); desenharBanco();
+  marcar(d); aplicar(d); if(BANCO.ok && HIST.has(d.id)) salvarBanco(); desenharAlertas(); desenharPainel(); desenharBanco();
 }
 
 /* ===== 5) EVENTOS E INÍCIO ===== */
@@ -744,8 +894,25 @@ document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
 $('btnArq').onclick = () => $('arq').click();
 $('arq').onchange = e => e.target.files[0] && carregarArquivo(e.target.files[0]);
 $('btnVazio').onclick = () => $('arq').click();
-['fPeriodo','fDe','fAte','fTurno','fCat'].forEach(id => $(id).onchange = () => { lerFiltros(); redesenhar(); });
-$('fLimpar').onclick = () => { $('fPeriodo').value = 'tudo'; $('fDe').value = $('fAte').value = $('fTurno').value = $('fCat').value = ''; lerFiltros(); redesenhar(); };
+['fPeriodo','fDe','fAte','fTurno','fCat','fSit','fForn'].forEach(id => $(id).onchange = () => { LIMITE_BASE = CONFIG.MAX_LINHAS_BASE; lerFiltros(); redesenhar(); });
+$('fLimpar').onclick = () => { $('fPeriodo').value = 'tudo'; $('fDe').value = $('fAte').value = $('fTurno').value = $('fCat').value = $('fSit').value = $('fForn').value = ''; lerFiltros(); redesenhar(); };
+function irParaBase(sit, forn){ // atalho dos alertas, indicadores e reincidentes: filtra e abre a Base detalhada
+  if(sit != null) $('fSit').value = sit; if(forn != null) $('fForn').value = forn;
+  lerFiltros(); redesenhar(); document.querySelector('.tab[data-aba="base"]').click(); }
+$('alertas').onclick = e => { const b = e.target.closest('[data-sit]'); if(b) irParaBase(b.dataset.sit); };
+$('kpis').onclick = e => { const b = e.target.closest('[data-sit]'); if(b) irParaBase(b.dataset.sit); };
+$('pReinc').onclick = e => { const b = e.target.closest('[data-forn]'); if(b) irParaBase('', b.dataset.forn); };
+$('maisBase').onclick = () => { LIMITE_BASE += CONFIG.MAX_LINHAS_BASE; desenharBase(); };
+$('corpo').onclick = e => { // botões da coluna Prazo
+  const b = e.target.closest('[data-prioridade],[data-email]'); if(!b) return;
+  const d = acharRegistro(b.dataset.prioridade || b.dataset.email); if(!d) return;
+  if(b.dataset.prioridade){ definirStatus(d, 'prioridade'); alterou(d); desenharBase(); }
+  emailPrioridade(d);
+};
+setInterval(() => { // a cada 30 s, atualiza prazos e alertas (a tabela só se ninguém estiver digitando nela)
+  if(!todas().length) return; desenharAlertas(); desenharPainel();
+  if(!$('corpo').contains(document.activeElement)) desenharBase();
+}, 30000);
 $('fVisao').onclick = e => { const v = e.target.dataset?.visao; if(v){ VISAO = v; redesenhar(); } };
 document.addEventListener('click', e => { const b = $('banco').querySelector('details[open]'); if(b && !b.contains(e.target)) b.open = false; }); // fecha o quadro do banco ao clicar fora
 $('filtroTipo').onchange = desenharPainel;
@@ -771,13 +938,15 @@ $('corpo').onchange = e => {
     const d = acharRegistro(c.dataset.chamado); if(!d) return;
     const sv = lerSalvo(CONFIG.CHAVE_CHAMADOS), v = c.value.trim();
     d.chamadoManual = v || null; if(v) sv[d.id] = v; else delete sv[d.id];
-    gravarSalvo(sv, CONFIG.CHAVE_CHAMADOS); c.value = v; alterou(d); return;
+    gravarSalvo(sv, CONFIG.CHAVE_CHAMADOS); c.value = v;
+    if(v && !d.statusManual && !d.resolucao) definirStatus(d, 'chamado'); // número digitado = chamado aberto agora
+    alterou(d); desenharBase(); return;
   }
-  // caixa "Resolvido": grava a data e a hora do clique
-  const d = c.dataset.id && acharRegistro(c.dataset.id); if(!d) return;
-  const sv = lerSalvo();
-  if(c.checked){ d.resolucaoManual = new Date(); sv[d.id] = d.resolucaoManual.toISOString(); } else { d.resolucaoManual = null; delete sv[d.id]; }
-  gravarSalvo(sv); alterou(d); desenharBase();
+  if('status' in c.dataset){ // status do chamado: guarda o horário de cada etapa (navegador e banco)
+    const d = acharRegistro(c.dataset.status); if(!d) return;
+    definirStatus(d, c.value); alterou(d); desenharBase();
+    if(c.value === 'prioridade') emailPrioridade(d); // pedir prioridade já abre o e-mail
+  }
 };
 $('corpo').onkeydown = e => { if(e.key === 'Enter' && e.target.classList.contains('in-chamado')) e.target.blur(); }; // Enter confirma o chamado
 $('busca').oninput = desenharBase;
