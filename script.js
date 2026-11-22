@@ -8,7 +8,8 @@ const CONFIG = {
   SUPABASE: {
     url: 'https://ayjitqikgfvjfrynniod.supabase.co',
     chave: 'sb_publishable_4a3GRMlPCVXYGCQjzteNng_ThyO13eX',
-    intervaloSeg: 15            // de quantos em quantos segundos buscar o que os colegas alteraram
+    intervaloSeg: 15,           // de quantos em quantos segundos buscar o que os colegas alteraram
+    emailPadrao: 'divergencias@assai.com' // usuário único do time: já vem preenchido no login (só falta a senha)
   },
   TOP_N: 10,                    // quantos itens mostrar em cada ranking
   METRICA_TEMPO: 'media',       // 'media' ou 'mediana' (tempo de resolução por categoria, em horas)
@@ -796,7 +797,7 @@ function desenharBanco(msg = BANCO.erro, forcar){ // indicador pequeno no topo; 
   } else if(BANCO.conectando){ estado = 'espera'; rotulo = 'Conectando…'; corpo = '<p>Baixando o histórico do banco…</p>'; }
   else { estado = 'espera'; rotulo = 'Entrar no banco';
     corpo = '<p>Entre com o seu usuário para ver o histórico do time e gravar suas alterações.</p>'
-      + `<form class="form-login" id="formLogin"><input type="email" id="loginEmail" placeholder="E-mail" autocomplete="username" required value="${esc(BANCO.ultimoEmail || '')}">`
+      + `<form class="form-login" id="formLogin"><input type="email" id="loginEmail" placeholder="E-mail" autocomplete="username" required value="${esc(BANCO.ultimoEmail || CONFIG.SUPABASE.emailPadrao || '')}">`
       + '<input type="password" id="loginSenha" placeholder="Senha" autocomplete="current-password" required>'
       + '<button type="submit" class="primario">Entrar</button></form>'; }
   if(msg) estado = 'erro';
