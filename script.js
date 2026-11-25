@@ -59,7 +59,8 @@ const CONFIG = {
   FORNECEDOR_CATEGORIA: {
     // exemplo: 'NOME DO FORNECEDOR': 'LÍQUIDA 4 – CERVEJA, CIGARROS',
   },
-  // Categorias do seletor da Base detalhada. Grupo : lista de "CATEGORIA – SUB-CATEGORIA".
+  // Categorias do seletor SÓ quando não há arquivo de PLUs carregado. Com o arquivo, a lista vem das categorias dele
+  // (sem a descrição entre parênteses: "Bazar2 (Faça você mesmo)" vira "Bazar2"), agrupadas pelo nome sem o número.
   // Para incluir, tirar ou renomear, edite aqui. Uma categoria escolhida e depois renomeada continua aparecendo na NF com o nome antigo.
   CATEGORIAS: {
     'MERCEARIA I': [
@@ -172,9 +173,9 @@ const acharRegistro = id => HIST.get(id) || DADOS.find(x => x.id === id);
 // Esta função calcula o que aparece: o que a planilha diz vale mais que a escolha manual.
 function aplicar(d){
   d.tipo = d.tipoArquivo !== 'nd' ? d.tipoArquivo : (d.tipoManual || 'nd');
-  const plan = categoriaDaPlanilha(d.categoriaArquivo); // só vale se for uma categoria da lista (ou um grupo)
-  d.categoriaAuto = d.categoriaManual || plan ? null : categoriaAutomatica(d); // sugestão (itens da NF, arquivo de produtos ou regra)
-  d.categoria = d.categoriaManual || plan || d.categoriaAuto?.cat || d.categoriaArquivo || SEM_CATEGORIA;
+  const plan = categoriaDaPlanilha(d.categoriaArquivo), manual = canonCategoria(d.categoriaManual); // planilha: só vale se for uma categoria da lista (ou um grupo)
+  d.categoriaAuto = manual || plan ? null : categoriaAutomatica(d); // sugestão (arquivo de produtos ou regra)
+  d.categoria = manual || plan || d.categoriaAuto?.cat || canonCategoria(d.categoriaArquivo) || SEM_CATEGORIA;
   d.categoriaOrigem = d.categoriaManual ? 'manual' : plan ? 'planilha' : d.categoriaAuto?.origem || (d.categoriaArquivo ? 'planilha' : '');
   d.chamado = d.chamadoManual || '';
   // Status: o escolhido na tela; FIM DIV da planilha encerra como Resolvida (a não ser que alguém tenha marcado recusa)
@@ -251,12 +252,12 @@ function seletorTipo(d){ // lista de tipo, só para NFs em que a planilha não d
 const ORIGEM_AUTO = { regra: 'pela regra do fornecedor', cadastro: 'pelo fornecedor no arquivo de produtos' };
 function seletorCategoria(d){ // caixa de seleção da categoria de uma NF na Base detalhada
   const atual = d.categoria === SEM_CATEGORIA ? '' : d.categoria, opc = o => `<option value="${esc(o)}"${o === atual ? ' selected' : ''}>${esc(o)}</option>`;
-  const naLista = Object.values(CONFIG.CATEGORIAS).some(l => l.includes(atual)), auto = ORIGEM_AUTO[d.categoriaOrigem];
+  const cats = listaCategorias(), naLista = Object.values(cats).some(l => l.includes(atual)), auto = ORIGEM_AUTO[d.categoriaOrigem];
   const titulo = auto ? 'Sugerida ' + auto + (d.categoriaAuto?.nome ? ' (' + d.categoriaAuto.nome + ')' : '') + ': ' + atual + '. Escolha na lista para trocar.' : (atual || 'Escolha a categoria');
   return `<select class="sel-cat${auto ? ' auto' : ''}" data-cat="${esc(d.id)}" aria-label="Categoria da NF ${esc(d.nf)}" title="${esc(titulo)}">`
     + `<option value="">Escolha a categoria…</option>`
     + (atual && !naLista ? `<optgroup label="${d.categoriaOrigem === 'planilha' ? 'Da planilha' : 'Outras'}">${opc(atual)}</optgroup>` : '') // valor fora da lista
-    + Object.entries(CONFIG.CATEGORIAS).map(([g, l]) => `<optgroup label="${esc(g)}">${l.map(opc).join('')}</optgroup>`).join('')
+    + Object.entries(cats).map(([g, l]) => `<optgroup label="${esc(g)}">${l.map(opc).join('')}</optgroup>`).join('')
     + '</select>';
 }
 
@@ -386,7 +387,7 @@ function passaFiltro(d){ // a senha entra nos filtros do topo? (datas e turno pe
   if(f.forn && !norm(d.fornecedor).includes(f.forn)) return false;
   if(f.cat){
     if(f.cat === SEM_CATEGORIA) return d.categoria === SEM_CATEGORIA;
-    if(f.cat.startsWith('grupo:')){ const g = f.cat.slice(6); return d.categoria === g || (CONFIG.CATEGORIAS[g] || []).includes(d.categoria); }
+    if(f.cat.startsWith('grupo:')){ const g = f.cat.slice(6); return d.categoria === g || (listaCategorias()[g] || []).includes(d.categoria); }
     return d.categoria === f.cat;
   }
   return true;
@@ -394,10 +395,10 @@ function passaFiltro(d){ // a senha entra nos filtros do topo? (datas e turno pe
 function desenharFiltros(){ // monta as listas de turno e categoria (mantém o que estava escolhido)
   const t = $('fTurno'), c = $('fCat'), vt = t.value, vc = c.value, opc = (v, txt) => `<option value="${esc(v)}">${esc(txt)}</option>`;
   if(!t.options.length) t.innerHTML = opc('', 'Todos os turnos') + CONFIG.TURNOS.map((x, i) => opc(i, x.nome)).join('');
-  const lista = Object.values(CONFIG.CATEGORIAS).flat(), grupos = Object.keys(CONFIG.CATEGORIAS);
+  const cats = listaCategorias(), lista = Object.values(cats).flat(), grupos = Object.keys(cats);
   const outras = [...new Set(todas().map(d => d.categoria))].filter(x => x !== SEM_CATEGORIA && !lista.includes(x) && !grupos.includes(x)).sort();
   c.innerHTML = opc('', 'Todas as categorias') + opc(SEM_CATEGORIA, 'Sem categoria')
-    + Object.entries(CONFIG.CATEGORIAS).map(([g, l]) => `<optgroup label="${esc(g)}">${opc('grupo:' + g, 'Todo o grupo ' + g)}${l.map(x => opc(x, x)).join('')}</optgroup>`).join('')
+    + Object.entries(cats).map(([g, l]) => `<optgroup label="${esc(g)}">${l.length > 1 ? opc('grupo:' + g, 'Todo o grupo ' + g) : ''}${l.map(x => opc(x, x)).join('')}</optgroup>`).join('')
     + (outras.length ? `<optgroup label="Outras">${outras.map(x => opc(x, x)).join('')}</optgroup>` : '');
   t.value = vt; c.value = [...c.options].some(o => o.value === vc) ? vc : '';
   $('listaFiltroForn').innerHTML = [...new Set(todas().map(d => d.fornecedor))].sort().map(f => `<option value="${esc(f)}">`).join('');
@@ -461,7 +462,24 @@ function mapearCategoria(t){ // texto do cadastro -> categoria da lista (pelo no
   }
   return String(t).trim();
 }
-function categoriaDaPlanilha(t){ const c = mapearCategoria(t); return c && (Object.values(CONFIG.CATEGORIAS).flat().includes(c) || c in CONFIG.CATEGORIAS) ? c : ''; }
+// Categorias do arquivo de PLUs: "Bazar2 (Faça você mesmo)" vira "Bazar2". A mesma categoria escrita de jeitos diferentes
+// ("BAZAR 2", "Bazar2") vira uma só, com a grafia mais comum no arquivo. Sem arquivo de PLUs, vale a lista CATEGORIAS do CONFIG.
+const limparCategoria = t => String(t ?? '').replace(/\s*\([^)]*\)/g, ' ').replace(/\s+[–—-]\s+.*$/, '').replace(/\s+/g, ' ').trim();
+const chaveCategoria = t => norm(limparCategoria(t)).replace(/\s+/g, '');
+let CANON = new Map(), CATS = null; // chave -> nome padrão; lista { grupo: [categorias] } (refeita quando o arquivo muda)
+function canonCategoria(t){ // nome padrão de uma categoria (o do arquivo de PLUs)
+  if(!t) return '';
+  return PRODUTOS.total ? (CANON.get(chaveCategoria(t)) || limparCategoria(t)) : mapearCategoria(t);
+}
+const grupoDaCategoria = c => (limparCategoria(c).replace(/\s*\d.*$/, '').trim() || c).toUpperCase(); // "Bazar2" -> "BAZAR"
+function listaCategorias(){ // { grupo: [categorias] }, em ordem alfabética (Bazar2 antes de Bazar10)
+  if(CATS) return CATS;
+  if(!PRODUTOS.total) return CATS = CONFIG.CATEGORIAS;
+  const por = new Map(), ord = (a, b) => a.localeCompare(b, 'pt-BR', { numeric: true, sensitivity: 'base' });
+  for(const c of new Set(CANON.values())){ const g = grupoDaCategoria(c); if(!por.has(g)) por.set(g, []); por.get(g).push(c); }
+  return CATS = Object.fromEntries([...por].sort((a, b) => ord(a[0], b[0])).map(([g, l]) => [g, l.sort(ord)]));
+}
+function categoriaDaPlanilha(t){ const c = canonCategoria(t), cats = listaCategorias(); return c && (Object.values(cats).flat().includes(c) || c in cats) ? c : ''; }
 const NAO_E_NOME = /^(cod|codigo|cd|id|cnpj|num|numero|n|qtd|seq)\b/; // colunas de código não servem como nome
 function acharCabecalhoProdutos(rows){ // mesma ideia de acharCabecalho, mas cada coluna pega o primeiro nome da lista que existir
   for(let i = 0; i < Math.min(rows.length, CONFIG.LINHAS_PARA_ACHAR_CABECALHO); i++){
@@ -484,7 +502,11 @@ function resumirProdutos(lista){ // [plu, ean, fornecedor, categoria, cnpj] por 
   return [...m].map(([k, n]) => [...k.split('\u0000'), n]);
 }
 function indexarProdutos(nome, resumo){ // resumo: [fornecedor, categoria, cnpj, quantidade de produtos]
-  const porForn = new Map(), porCnpj = new Map();
+  const porForn = new Map(), porCnpj = new Map(), grafias = new Map();
+  for(const [, c, , n = 1] of resumo){ const l = limparCategoria(c), k = chaveCategoria(l); if(!k) continue; // grafia mais comum de cada categoria
+    if(!grafias.has(k)) grafias.set(k, new Map()); grafias.get(k).set(l, (grafias.get(k).get(l) || 0) + n); }
+  CANON = new Map([...grafias].map(([k, m]) => [k, maisFrequente(m)])); CATS = null;
+  resumo = resumo.map(([fo, c, cnpj, n]) => [fo, CANON.get(chaveCategoria(c)) || '', cnpj, n]);
   const somar = (mapa, k, fo, cat, n) => { if(!mapa.has(k)) mapa.set(k, { nome: fo, cats: new Map() }); const m = mapa.get(k).cats; m.set(cat, (m.get(cat) || 0) + n); };
   let total = 0;
   for(const [fo, cat, cnpj, n = 1] of resumo){ if(!cat) continue; total += n;
@@ -497,7 +519,7 @@ async function carregarProdutos(f){
     const rows = await lerPlanilha(f, acharCabecalhoProdutos), c = acharCabecalhoProdutos(rows);
     if(!c) throw new Error('Não encontrei as colunas. O arquivo precisa de uma coluna Categoria e de uma coluna Fornecedor (ou CNPJ).');
     const g = (r, k) => c.idx[k] < 0 ? '' : r[c.idx[k]];
-    const lista = rows.slice(c.linha + 1).map(r => [codigo(g(r, 'plu')), codigo(g(r, 'ean')), String(g(r, 'fornecedor') ?? '').trim(), mapearCategoria(g(r, 'categoria')), String(g(r, 'cnpj') ?? '').replace(/\D/g, '')])
+    const lista = rows.slice(c.linha + 1).map(r => [codigo(g(r, 'plu')), codigo(g(r, 'ean')), String(g(r, 'fornecedor') ?? '').trim(), limparCategoria(g(r, 'categoria')), String(g(r, 'cnpj') ?? '').replace(/\D/g, '')])
       .filter(x => x[3] && (x[2] || x[4]));
     if(!lista.length) throw new Error('Nenhuma linha com categoria.');
     const cab = rows[c.linha], usadas = Object.entries(c.idx).filter(([, i]) => i >= 0).map(([k, i]) => k.toUpperCase() + ' = "' + String(cab[i]).trim() + '"');
@@ -534,7 +556,7 @@ function categoriaDoCadastro(f, cnpj){ // categoria mais comum dos produtos do f
 }
 function categoriaAutomatica(d){ // 1) fornecedor no arquivo de produtos; 2) regra do fornecedor
   const c = categoriaDoCadastro(d.fornecedor, d.cnpj); if(c?.cat) return { cat: c.cat, nome: c.nome, origem: 'cadastro' };
-  const r = regraDoFornecedor(d.fornecedor); return r ? { cat: r.cat, origem: 'regra' } : null;
+  const r = regraDoFornecedor(d.fornecedor); return r ? { cat: canonCategoria(r.cat), origem: 'regra' } : null;
 }
 function recalcularCategorias(){ for(const d of DADOS) aplicar(d); for(const d of HIST.values()) aplicar(d); }
 function salvarRegra(forn, cat, origem){ // cria ou troca a regra deste fornecedor (cat vazio = remove)
@@ -564,11 +586,13 @@ function desenharCategorias(){ // aba Categorias: resumo do cadastro, regras e q
     + (x.c ? `<td>${esc(x.c.nome)}</td><td>${esc(x.c.cat)}</td>` : `<td colspan="2"><span class="selo-aberta">Não encontrado</span> <button type="button" class="link" data-criar-regra="${esc(x.f)}">Criar regra</button></td>`) + '</tr>').join('');
   $('btnTirarProdutos').classList.toggle('hidden', !PRODUTOS.total);
   $('resumoAuto').textContent = vs.length ? `Categoria automática em ${conta('regra') + conta('cadastro')} de ${vs.length} NFs: ${conta('cadastro')} pelo fornecedor no arquivo de produtos, ${conta('regra')} pela regra do fornecedor. ${vs.filter(d => d.categoria === SEM_CATEGORIA).length} continuam sem categoria.` : '';
-  const sel = $('regraCat'); if(!sel.options.length) sel.innerHTML = '<option value="">Escolha a categoria…</option>' + Object.entries(CONFIG.CATEGORIAS).map(([g, l]) => `<optgroup label="${esc(g)}">${l.map(c => `<option>${esc(c)}</option>`).join('')}</optgroup>`).join('');
+  const sel = $('regraCat'), vSel = sel.value; // lista de categorias da regra (refeita: muda quando o arquivo de PLUs muda)
+  sel.innerHTML = '<option value="">Escolha a categoria…</option>' + Object.entries(listaCategorias()).map(([g, l]) => `<optgroup label="${esc(g)}">${l.map(c => `<option>${esc(c)}</option>`).join('')}</optgroup>`).join('');
+  sel.value = vSel;
   $('listaFornecedores').innerHTML = [...new Set(vs.map(d => d.fornecedor))].sort().map(f => `<option value="${esc(f)}">`).join('');
   const nomeOrigem = { config: 'Fixa (CONFIG)', tela: 'Criada na tela', aprendida: 'Aprendida de uma escolha' };
   const regras = REGRAS.filter(r => !r.removida).concat(Object.entries(CONFIG.FORNECEDOR_CATEGORIA).map(([forn, cat]) => ({ forn, cat, origem: 'config' })));
-  $('corpoRegras').innerHTML = regras.length ? regras.map(r => `<tr><td>${esc(r.forn)}</td><td>${esc(r.cat)}</td><td><span class="vazio">${nomeOrigem[r.origem] || ''}</span></td>`
+  $('corpoRegras').innerHTML = regras.length ? regras.map(r => `<tr><td>${esc(r.forn)}</td><td>${esc(canonCategoria(r.cat))}</td><td><span class="vazio">${nomeOrigem[r.origem] || ''}</span></td>`
     + `<td>${vs.filter(d => d.categoriaOrigem === 'regra' && norm(regraDoFornecedor(d.fornecedor)?.forn) === norm(r.forn)).length}</td>`
     + `<td>${r.origem === 'config' ? '' : `<button type="button" class="link" data-tirar-regra="${esc(r.forn)}">Remover</button>`}</td></tr>`).join('')
     : '<tr><td colspan="5" class="vazio">Nenhuma regra ainda.</td></tr>';
